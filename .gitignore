@@ -1,5 +1,6 @@
 ### Gradle ###
 .gradle
+.gradle-user/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/**/build/
@@ -31,6 +32,11 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+### Local Docs ###
+/AGENTS.md
+/docs/THROWABLE_ROPE_CONNECTOR_SPEC.md
+/.tmp_jar_inspect/
 
 ### Minecraft Modding ###
 run/

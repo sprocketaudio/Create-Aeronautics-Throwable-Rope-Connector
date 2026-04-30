@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "simulated:rope_coupling"
+    },
+    {
+      "item": "simulated:rope_connector"
+    }
+  ],
+  "result": {
+    "id": "create_aeronautics_throwable_rope_connector:throwable_rope_connector",
+    "count": 1
+  }
+}
