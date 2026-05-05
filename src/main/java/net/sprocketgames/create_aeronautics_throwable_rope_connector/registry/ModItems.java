@@ -7,6 +7,7 @@ import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.RopeConnectorLauncherItem;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.ThrowableRopeConnectorItem;
 
 public final class ModItems {
@@ -15,6 +16,11 @@ public final class ModItems {
     public static final DeferredItem<Item> THROWABLE_ROPE_CONNECTOR = ITEMS.register(
             "throwable_rope_connector",
             () -> new ThrowableRopeConnectorItem(new Item.Properties())
+    );
+
+    public static final DeferredItem<Item> ROPE_CONNECTOR_LAUNCHER = ITEMS.register(
+            "rope_connector_launcher",
+            () -> new RopeConnectorLauncherItem(new Item.Properties().stacksTo(1))
     );
 
     private ModItems() {
@@ -27,6 +33,7 @@ public final class ModItems {
     public static void addToCreativeTabs(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(THROWABLE_ROPE_CONNECTOR);
+            event.accept(ROPE_CONNECTOR_LAUNCHER);
         }
     }
 }

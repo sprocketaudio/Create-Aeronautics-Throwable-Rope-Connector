@@ -1,3 +1,6 @@
 {
-  "parent": "simulated:item/rope_connector"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "create_aeronautics_throwable_rope_connector:item/throwable_rope_connector"
+  }
 }

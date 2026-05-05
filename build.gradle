@@ -27,6 +27,7 @@ sourceSets.main.resources {
 
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
+    maven { url = "https://maven.createmod.net" }
 }
 
 base {
@@ -103,6 +104,10 @@ dependencies {
     // And its provides the option to then use net.minecraft as the group, and one of; client, server or joined as the module name, plus the game version as version.
     // For all intends and purposes: You can treat this dependency as if it is a normal library you would use.
     implementation "net.neoforged:neoforge:${neo_version}"
+    compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
+    compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
+    compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
+    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

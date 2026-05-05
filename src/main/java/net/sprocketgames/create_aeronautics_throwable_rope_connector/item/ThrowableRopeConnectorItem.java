@@ -16,6 +16,7 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.level.Level;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 
 public final class ThrowableRopeConnectorItem extends Item implements ProjectileItem {
     public ThrowableRopeConnectorItem(Properties properties) {
@@ -25,6 +26,10 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand usedHand) {
         ItemStack itemStack = player.getItemInHand(usedHand);
+        if (isLauncherInOtherHand(player, usedHand)) {
+            return InteractionResultHolder.pass(itemStack);
+        }
+
         level.playSound(
                 null,
                 player.getX(),
@@ -39,6 +44,8 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
         if (!level.isClientSide()) {
             ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, player, ModCommonConfig.MAX_THROW_DISTANCE.get());
             projectile.setSourceSlot(getSourceSlot(player, usedHand));
+            projectile.setTrailFromOffhand(usedHand == InteractionHand.OFF_HAND);
+            projectile.setTrailFromLauncher(false);
             projectile.setConsumeOnSuccessOnly(ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get());
             projectile.setItem(itemStack);
             projectile.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F, ModCommonConfig.THROW_VELOCITY.get().floatValue(), 1.0F);
@@ -63,5 +70,10 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
 
     private static int getSourceSlot(Player player, InteractionHand usedHand) {
         return usedHand == InteractionHand.OFF_HAND ? Inventory.SLOT_OFFHAND : player.getInventory().selected;
+    }
+
+    private static boolean isLauncherInOtherHand(Player player, InteractionHand usedHand) {
+        InteractionHand otherHand = usedHand == InteractionHand.MAIN_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        return player.getItemInHand(otherHand).is(ModItems.ROPE_CONNECTOR_LAUNCHER.get());
     }
 }

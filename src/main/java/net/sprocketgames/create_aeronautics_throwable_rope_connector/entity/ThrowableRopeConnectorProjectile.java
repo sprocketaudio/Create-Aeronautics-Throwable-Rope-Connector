@@ -6,6 +6,9 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -28,6 +31,14 @@ import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.Mo
 
 public final class ThrowableRopeConnectorProjectile extends ThrowableItemProjectile {
     private static final Component TARGET_TOO_FAR = Component.translatable("message.create_aeronautics_throwable_rope_connector.target_too_far");
+    private static final EntityDataAccessor<Boolean> DATA_TRAIL_FROM_OFFHAND = SynchedEntityData.defineId(
+            ThrowableRopeConnectorProjectile.class,
+            EntityDataSerializers.BOOLEAN
+    );
+    private static final EntityDataAccessor<Boolean> DATA_TRAIL_FROM_LAUNCHER = SynchedEntityData.defineId(
+            ThrowableRopeConnectorProjectile.class,
+            EntityDataSerializers.BOOLEAN
+    );
 
     private Vec3 origin = Vec3.ZERO;
     private double maxThrowDistance = 20.0D;
@@ -51,12 +62,35 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
     }
 
     @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(DATA_TRAIL_FROM_OFFHAND, false);
+        builder.define(DATA_TRAIL_FROM_LAUNCHER, false);
+    }
+
+    @Override
     protected Item getDefaultItem() {
         return ModItems.THROWABLE_ROPE_CONNECTOR.get();
     }
 
     public void setSourceSlot(int sourceSlot) {
         this.sourceSlot = sourceSlot;
+    }
+
+    public void setTrailFromOffhand(boolean trailFromOffhand) {
+        this.entityData.set(DATA_TRAIL_FROM_OFFHAND, trailFromOffhand);
+    }
+
+    public boolean isTrailFromOffhand() {
+        return this.entityData.get(DATA_TRAIL_FROM_OFFHAND);
+    }
+
+    public void setTrailFromLauncher(boolean trailFromLauncher) {
+        this.entityData.set(DATA_TRAIL_FROM_LAUNCHER, trailFromLauncher);
+    }
+
+    public boolean isTrailFromLauncher() {
+        return this.entityData.get(DATA_TRAIL_FROM_LAUNCHER);
     }
 
     public void setConsumeOnSuccessOnly(boolean consumeOnSuccessOnly) {
@@ -129,6 +163,8 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         compound.putDouble("MaxThrowDistance", this.maxThrowDistance);
         compound.putInt("SourceSlot", this.sourceSlot);
         compound.putBoolean("ConsumeOnSuccessOnly", this.consumeOnSuccessOnly);
+        compound.putBoolean("TrailFromOffhand", this.isTrailFromOffhand());
+        compound.putBoolean("TrailFromLauncher", this.isTrailFromLauncher());
     }
 
     @Override
@@ -138,6 +174,8 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         this.maxThrowDistance = compound.contains("MaxThrowDistance") ? compound.getDouble("MaxThrowDistance") : ModCommonConfig.MAX_THROW_DISTANCE.get();
         this.sourceSlot = compound.contains("SourceSlot") ? compound.getInt("SourceSlot") : -1;
         this.consumeOnSuccessOnly = !compound.contains("ConsumeOnSuccessOnly") || compound.getBoolean("ConsumeOnSuccessOnly");
+        this.setTrailFromOffhand(compound.getBoolean("TrailFromOffhand"));
+        this.setTrailFromLauncher(compound.getBoolean("TrailFromLauncher"));
     }
 
     private void failAndReturn(Component message) {

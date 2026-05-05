@@ -6,6 +6,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.ModNetworking;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModEntityTypes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ public final class CreateAeronauticsThrowableRopeConnector {
         ModEntityTypes.register(modEventBus);
         ModItems.register(modEventBus);
         modEventBus.addListener(ModItems::addToCreativeTabs);
+        modEventBus.addListener(ModNetworking::register);
         modContainer.registerConfig(ModConfig.Type.COMMON, ModCommonConfig.SPEC);
     }
 }

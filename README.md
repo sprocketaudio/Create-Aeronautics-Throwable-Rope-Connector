@@ -7,7 +7,9 @@ Create Aeronautics: Throwable Rope Connector adds a throwable connector item for
 ## Features
 
 - Adds the Throwable Rope Connector item.
+- Adds the Rope Connector Launcher item.
 - Throws like a snowball and uses the rope connector model.
+- Launcher fires Throwable Rope Connectors from the other hand at longer range.
 - Places a normal Create Simulated Rope Connector on valid block faces.
 - Returns a normal Create Simulated Rope Coupling after successful placement.
 - Returned Rope Coupling is already linked to the placed connector.
@@ -56,6 +58,18 @@ showFailureMessages = true
 - Create Aeronautics bundle that includes Create Simulated
 
 ## Changelog
+
+### 0.2.0
+
+- Added Rope Connector Launcher for longer-range connector placement.
+- Added Create-style launcher visuals, recoil, cog animation, and launch sound.
+- Added projectile rope trail visuals for thrown and launched connectors.
+- Updated Throwable Rope Connector icon so it no longer looks identical to a normal connector.
+- Changed launcher recipe to Create mechanical crafting, based on the Potato Cannon recipe with polished cut asurine slabs.
+- Launcher can now be fired from either hand, using a Throwable Rope Connector in the other hand.
+- Fixed main-hand throwable connectors blocking offhand launcher use.
+- Improved returned Rope Coupling placement for stacked connectors and full inventories.
+- Tuned launcher rope trail origin and slack so it better matches the launcher barrel.
 
 ### 0.1.0
 

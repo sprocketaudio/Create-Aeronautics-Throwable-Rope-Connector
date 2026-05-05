@@ -148,9 +148,14 @@ public final class ThrowableRopeConnectorPlacement {
         }
 
         if (current.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
-            ItemStack displaced = current.copy();
-            player.getInventory().setItem(sourceSlot, stack);
-            giveToPlayer(player, displaced);
+            ItemStack remainingThrowableConnectors = current.copy();
+            player.getInventory().setItem(sourceSlot, ItemStack.EMPTY);
+            if (player.getInventory().add(remainingThrowableConnectors)) {
+                player.getInventory().setItem(sourceSlot, stack);
+            } else {
+                player.getInventory().setItem(sourceSlot, current);
+                player.drop(stack, false);
+            }
             return;
         }
 
