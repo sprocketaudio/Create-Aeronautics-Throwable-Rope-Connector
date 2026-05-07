@@ -108,6 +108,8 @@ dependencies {
     compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
     compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
     localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
+    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-aeronautics-bundled-1.21.1-1.2.1.jar")
+    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/sable-neoforge-1.21.1-1.2.2.jar")
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

@@ -27,8 +27,14 @@ A lightweight addon that converts a placed throwable rope connector into a pre-s
     ordering="AFTER"
     side="BOTH"
 [[dependencies.${mod_id}]]
-    modId="simulated"
+    modId="aeronautics_bundled"
     type="required"
+    versionRange="[1.2.1,)"
+    ordering="AFTER"
+    side="BOTH"
+[[dependencies.${mod_id}]]
+    modId="simulated"
+    type="optional"
     versionRange="[1.2.1,)"
     ordering="AFTER"
     side="BOTH"

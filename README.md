@@ -54,10 +54,13 @@ showFailureMessages = true
 
 - Minecraft 1.21.1
 - NeoForge 21.1.228 or newer
-- Create Simulated 1.2.1 or newer
-- Create Aeronautics bundle that includes Create Simulated
+- Create Aeronautics bundled 1.2.1 or newer
 
 ## Changelog
+
+### 0.2.1
+
+- Fixed dedicated-server dependency metadata to require the Create Aeronautics bundle instead of standalone Create Simulated.
 
 ### 0.2.0
 
