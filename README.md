@@ -58,6 +58,11 @@ showFailureMessages = true
 
 ## Changelog
 
+### 0.2.2
+
+- Fixed a full-inventory edge case where returning a prepared Rope Coupling after a successful throw or launcher shot could consume the rest of a stacked Throwable Rope Connector pile.
+- Adjusted the fallback Rope Coupling drop so overflow returns land close to the player without being flung far away.
+
 ### 0.2.1
 
 - Fixed dedicated-server dependency metadata to require the Create Aeronautics bundle instead of standalone Create Simulated.

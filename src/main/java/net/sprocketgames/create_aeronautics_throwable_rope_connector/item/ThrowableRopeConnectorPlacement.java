@@ -10,6 +10,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
@@ -126,7 +127,7 @@ public final class ThrowableRopeConnectorPlacement {
 
     private static void giveToPlayer(Player player, ItemStack stack) {
         if (!player.getInventory().add(stack)) {
-            player.drop(stack, false);
+            dropNearPlayer(player, stack);
         }
     }
 
@@ -149,12 +150,10 @@ public final class ThrowableRopeConnectorPlacement {
 
         if (current.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
             ItemStack remainingThrowableConnectors = current.copy();
-            player.getInventory().setItem(sourceSlot, ItemStack.EMPTY);
-            if (player.getInventory().add(remainingThrowableConnectors)) {
+            if (moveStackOutOfSourceSlot(player, remainingThrowableConnectors, sourceSlot)) {
                 player.getInventory().setItem(sourceSlot, stack);
             } else {
-                player.getInventory().setItem(sourceSlot, current);
-                player.drop(stack, false);
+                dropNearPlayer(player, stack);
             }
             return;
         }
@@ -223,6 +222,67 @@ public final class ThrowableRopeConnectorPlacement {
     private static boolean isValidPlayerInventorySlot(Player player, int slot) {
         return slot >= 0 && slot < player.getInventory().getContainerSize()
                 && (slot < player.getInventory().items.size() || slot == Inventory.SLOT_OFFHAND);
+    }
+
+    private static boolean moveStackOutOfSourceSlot(Player player, ItemStack stack, int sourceSlot) {
+        if (stack.isEmpty()) {
+            player.getInventory().setItem(sourceSlot, ItemStack.EMPTY);
+            return true;
+        }
+
+        int mergeSlot = findCompatibleSlot(player, stack, sourceSlot);
+        if (mergeSlot >= 0) {
+            ItemStack target = player.getInventory().getItem(mergeSlot);
+            if (target.isEmpty()) {
+                player.getInventory().setItem(mergeSlot, stack);
+            } else {
+                target.grow(stack.getCount());
+            }
+            player.getInventory().setItem(sourceSlot, ItemStack.EMPTY);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int findCompatibleSlot(Player player, ItemStack stack, int sourceSlot) {
+        for (int slot = 0; slot < player.getInventory().items.size(); slot++) {
+            if (slot == sourceSlot) {
+                continue;
+            }
+
+            ItemStack target = player.getInventory().getItem(slot);
+            if (ItemStack.isSameItemSameComponents(target, stack) && target.getCount() + stack.getCount() <= target.getMaxStackSize()) {
+                return slot;
+            }
+        }
+
+        for (int slot = 0; slot < player.getInventory().items.size(); slot++) {
+            if (slot == sourceSlot) {
+                continue;
+            }
+
+            if (player.getInventory().getItem(slot).isEmpty()) {
+                return slot;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void dropNearPlayer(Player player, ItemStack stack) {
+        ItemEntity itemEntity = player.drop(stack, false);
+        if (itemEntity == null) {
+            return;
+        }
+
+        net.minecraft.world.phys.Vec3 forward = player.getLookAngle();
+        net.minecraft.world.phys.Vec3 spawnPos = player.position()
+                .add(forward.x * 0.18D, player.getBbHeight() * 0.45D, forward.z * 0.18D);
+        itemEntity.setPos(spawnPos.x, spawnPos.y, spawnPos.z);
+
+        // Gentle nudge forward so it's visible, but doesn't get flung like vanilla toss.
+        itemEntity.setDeltaMovement(forward.x * 0.06D, 0.06D, forward.z * 0.06D);
     }
 
     private record PlacementTarget(BlockPos targetPos, BlockPos placePos, Direction face, net.minecraft.world.phys.Vec3 hitLocation) {
