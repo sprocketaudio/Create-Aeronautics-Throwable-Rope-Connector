@@ -2,23 +2,28 @@
 
 Throw rope connectors instead of climbing, bridging, or awkwardly landing just to place one.
 
-Create Aeronautics: Throwable Rope Connector adds a throwable connector item for Create Aeronautics / Create Simulated rope setups. Throw it like a snowball at a valid block face, and it places a normal Create Simulated Rope Connector. Your item then becomes a normal Rope Coupling that is already linked to the placed connector, ready to attach to a Rope Winch.
+Create Aeronautics: Throwable Rope Connector adds three ways to place rope connections for Create Aeronautics / Create Simulated setups: throw a connector by hand, fire one from the Rope Connector Launcher, or use the Mounted Rope Launcher for ship-mounted anchoring. Successful shots place a normal Create Simulated Rope Connector and give you a normal Rope Coupling that is already linked to it, ready to attach to a Rope Winch.
 
 ## Features
 
 - Adds the Throwable Rope Connector item.
 - Adds the Rope Connector Launcher item.
+- Adds the Mounted Rope Launcher block.
 - Throws like a snowball and uses the rope connector model.
 - Launcher fires Throwable Rope Connectors from the other hand at longer range.
+- Mounted launcher lets a player mount, aim, fire, and release rope connections directly from the block.
 - Places a normal Create Simulated Rope Connector on valid block faces.
 - Returns a normal Create Simulated Rope Coupling after successful placement.
 - Returned Rope Coupling is already linked to the placed connector.
 - Returned Rope Coupling appears in the same slot the throwable connector was used from.
-- Failed throws do not consume the item by default.
-- Configurable throw distance, throw speed, cooldown, particles, and failure messages.
+- Failed shots do not consume ammo by default.
+- Configurable throw, launcher, and mounted launcher range.
+- Configurable throw speed, particles, projectile rope trail, and failure messages.
 - Works server-side for multiplayer validation.
 
 ## How To Use
+
+### Throwable Rope Connector
 
 1. Craft a Throwable Rope Connector.
 2. Aim at a valid block face.
@@ -27,36 +32,63 @@ Create Aeronautics: Throwable Rope Connector adds a throwable connector item for
 5. The item in your original slot becomes a linked Rope Coupling.
 6. Right-click a Rope Winch with that Rope Coupling to finish the connection.
 
-## Recipe
+### Rope Connector Launcher
 
-Shapeless crafting:
+1. Load Throwable Rope Connectors into your inventory.
+2. Hold the launcher and keep a Throwable Rope Connector in the other hand.
+3. Fire at a valid block face to place a connector at longer range.
+4. On success, the ammo becomes a linked Rope Coupling ready for the winch.
 
-- 1 Create Simulated Rope Coupling
-- 1 Create Simulated Rope Connector
+### Mounted Rope Launcher
 
-Result:
-
-- 1 Throwable Rope Connector
+1. Place the Mounted Rope Launcher.
+2. Load it with Throwable Rope Connectors.
+3. Right-click to mount it.
+4. Aim the turret and left-click to fire.
+5. Right-click while mounted to release the current rope.
+6. Sneak to dismount.
 
 ## Config
 
 ```toml
-[throwable_rope_connector]
-maxThrowDistance = 20.0
+[throwing]
+maxThrowDistance = 10.0
 throwVelocity = 1.5
+
+[launcher]
+launcherMaxDistance = 20.0
+
+[mounted]
+mountedLauncherRange = 40.0
+removePlacedConnectorOnRelease = true
+
+[general]
 consumeOnSuccessOnly = true
-cooldownTicks = 10
 playParticles = true
 showFailureMessages = true
+
+[visual]
+showProjectileRopeTrail = true
 ```
+
+Range values cannot exceed Create Simulated's `max_rope_range`. If they are set higher, they are corrected back down to that limit.
 
 ## Requirements
 
 - Minecraft 1.21.1
-- NeoForge 21.1.228 or newer
+- NeoForge 21.1.227 or newer
 - Create Aeronautics bundled 1.2.1 or newer
 
 ## Changelog
+
+### 0.3.0
+
+- Added the Mounted Rope Launcher block.
+- Added mountable aiming, firing, and rope release controls for the mounted launcher.
+- Updated default range settings to `10` for throwing, `20` for the handheld launcher, and `40` for the mounted launcher.
+- Added range correction against Create Simulated's `max_rope_range`.
+- Cleaned up and reorganized the config layout.
+- Added embedded mod icon support and config-menu compatibility improvements.
 
 ### 0.2.2
 
