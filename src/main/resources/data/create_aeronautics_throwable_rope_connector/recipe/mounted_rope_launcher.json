@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " L ",
+    "RWR",
+    "SSS"
+  ],
+  "key": {
+    "L": {
+      "item": "create_aeronautics_throwable_rope_connector:rope_connector_launcher"
+    },
+    "R": {
+      "item": "simulated:rope_coupling"
+    },
+    "W": {
+      "item": "simulated:rope_winch"
+    },
+    "S": {
+      "item": "create:polished_cut_asurine_slab"
+    }
+  },
+  "result": {
+    "id": "create_aeronautics_throwable_rope_connector:mounted_rope_launcher"
+  }
+}

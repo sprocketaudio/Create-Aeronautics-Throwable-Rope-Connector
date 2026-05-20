@@ -1,9 +1,8 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector.registry;
 
-import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.neoforged.bus.api.IEventBus;
-import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
@@ -23,17 +22,15 @@ public final class ModItems {
             () -> new RopeConnectorLauncherItem(new Item.Properties().stacksTo(1))
     );
 
+    public static final DeferredItem<BlockItem> MOUNTED_ROPE_LAUNCHER = ITEMS.register(
+            "mounted_rope_launcher",
+            () -> new BlockItem(ModBlocks.MOUNTED_ROPE_LAUNCHER.get(), new Item.Properties())
+    );
+
     private ModItems() {
     }
 
     public static void register(IEventBus modEventBus) {
         ITEMS.register(modEventBus);
-    }
-
-    public static void addToCreativeTabs(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
-            event.accept(THROWABLE_ROPE_CONNECTOR);
-            event.accept(ROPE_CONNECTOR_LAUNCHER);
-        }
     }
 }

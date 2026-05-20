@@ -25,6 +25,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.ThrowableRopeConnectorPlacement;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModEntityTypes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
@@ -39,11 +40,16 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
             ThrowableRopeConnectorProjectile.class,
             EntityDataSerializers.BOOLEAN
     );
+    private static final EntityDataAccessor<Boolean> DATA_TRAIL_FROM_MOUNTED_LAUNCHER = SynchedEntityData.defineId(
+            ThrowableRopeConnectorProjectile.class,
+            EntityDataSerializers.BOOLEAN
+    );
 
     private Vec3 origin = Vec3.ZERO;
-    private double maxThrowDistance = 20.0D;
+    private double maxThrowDistance = 10.0D;
     private int sourceSlot = -1;
     private boolean consumeOnSuccessOnly = true;
+    private BlockPos mountedSourcePos;
 
     public ThrowableRopeConnectorProjectile(EntityType<? extends ThrowableRopeConnectorProjectile> entityType, Level level) {
         super(entityType, level);
@@ -66,6 +72,7 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         super.defineSynchedData(builder);
         builder.define(DATA_TRAIL_FROM_OFFHAND, false);
         builder.define(DATA_TRAIL_FROM_LAUNCHER, false);
+        builder.define(DATA_TRAIL_FROM_MOUNTED_LAUNCHER, false);
     }
 
     @Override
@@ -93,8 +100,20 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         return this.entityData.get(DATA_TRAIL_FROM_LAUNCHER);
     }
 
+    public void setTrailFromMountedLauncher(boolean trailFromMountedLauncher) {
+        this.entityData.set(DATA_TRAIL_FROM_MOUNTED_LAUNCHER, trailFromMountedLauncher);
+    }
+
+    public boolean isTrailFromMountedLauncher() {
+        return this.entityData.get(DATA_TRAIL_FROM_MOUNTED_LAUNCHER);
+    }
+
     public void setConsumeOnSuccessOnly(boolean consumeOnSuccessOnly) {
         this.consumeOnSuccessOnly = consumeOnSuccessOnly;
+    }
+
+    public void setMountedSource(BlockPos mountedSourcePos) {
+        this.mountedSourcePos = mountedSourcePos.immutable();
     }
 
     @Override
@@ -109,6 +128,11 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
     protected void onHitBlock(BlockHitResult result) {
         super.onHitBlock(result);
         if (!(this.level() instanceof ServerLevel serverLevel)) {
+            return;
+        }
+
+        if (this.mountedSourcePos != null) {
+            this.handleMountedBlockHit(serverLevel, result);
             return;
         }
 
@@ -165,21 +189,34 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         compound.putBoolean("ConsumeOnSuccessOnly", this.consumeOnSuccessOnly);
         compound.putBoolean("TrailFromOffhand", this.isTrailFromOffhand());
         compound.putBoolean("TrailFromLauncher", this.isTrailFromLauncher());
+        compound.putBoolean("TrailFromMountedLauncher", this.isTrailFromMountedLauncher());
+        if (this.mountedSourcePos != null) {
+            compound.putLong("MountedSourcePos", this.mountedSourcePos.asLong());
+        }
     }
 
     @Override
     public void readAdditionalSaveData(CompoundTag compound) {
         super.readAdditionalSaveData(compound);
         this.origin = new Vec3(compound.getDouble("OriginX"), compound.getDouble("OriginY"), compound.getDouble("OriginZ"));
-        this.maxThrowDistance = compound.contains("MaxThrowDistance") ? compound.getDouble("MaxThrowDistance") : ModCommonConfig.MAX_THROW_DISTANCE.get();
+        this.maxThrowDistance = compound.contains("MaxThrowDistance") ? compound.getDouble("MaxThrowDistance") : ModCommonConfig.getClampedThrowDistance();
         this.sourceSlot = compound.contains("SourceSlot") ? compound.getInt("SourceSlot") : -1;
         this.consumeOnSuccessOnly = !compound.contains("ConsumeOnSuccessOnly") || compound.getBoolean("ConsumeOnSuccessOnly");
         this.setTrailFromOffhand(compound.getBoolean("TrailFromOffhand"));
         this.setTrailFromLauncher(compound.getBoolean("TrailFromLauncher"));
+        this.setTrailFromMountedLauncher(compound.getBoolean("TrailFromMountedLauncher"));
+        this.mountedSourcePos = compound.contains("MountedSourcePos") ? BlockPos.of(compound.getLong("MountedSourcePos")) : null;
     }
 
     private void failAndReturn(Component message) {
         if (this.level().isClientSide) {
+            return;
+        }
+
+        if (this.mountedSourcePos != null) {
+            this.notifyMountedFailure();
+            this.level().broadcastEntityEvent(this, (byte) 3);
+            this.discard();
             return;
         }
 
@@ -196,5 +233,28 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
 
         this.level().broadcastEntityEvent(this, (byte) 3);
         this.discard();
+    }
+
+    private void handleMountedBlockHit(ServerLevel serverLevel, BlockHitResult result) {
+        if (!(serverLevel.getBlockEntity(this.mountedSourcePos) instanceof MountedRopeLauncherBlockEntity mountedLauncher)) {
+            this.failAndReturn(ThrowableRopeConnectorPlacement.CANNOT_ATTACH_THERE);
+            return;
+        }
+
+        java.util.Optional<BlockPos> placedConnector = ThrowableRopeConnectorPlacement.placeConnectorFromMountedLauncher(serverLevel, result);
+        if (placedConnector.isEmpty() || !mountedLauncher.connectToPlacedConnector(serverLevel, placedConnector.get(), null)) {
+            placedConnector.ifPresent(pos -> serverLevel.removeBlock(pos, false));
+            this.failAndReturn(ThrowableRopeConnectorPlacement.CANNOT_ATTACH_THERE);
+            return;
+        }
+
+        this.level().broadcastEntityEvent(this, (byte) 3);
+        this.discard();
+    }
+
+    private void notifyMountedFailure() {
+        if (this.level().getBlockEntity(this.mountedSourcePos) instanceof MountedRopeLauncherBlockEntity mountedLauncher) {
+            mountedLauncher.onProjectileFailed();
+        }
     }
 }

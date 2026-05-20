@@ -42,7 +42,7 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
         );
 
         if (!level.isClientSide()) {
-            ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, player, ModCommonConfig.MAX_THROW_DISTANCE.get());
+            ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, player, ModCommonConfig.getClampedThrowDistance());
             projectile.setSourceSlot(getSourceSlot(player, usedHand));
             projectile.setTrailFromOffhand(usedHand == InteractionHand.OFF_HAND);
             projectile.setTrailFromLauncher(false);
@@ -53,7 +53,7 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
         }
 
         player.awardStat(Stats.ITEM_USED.get(this));
-        player.getCooldowns().addCooldown(this, ModCommonConfig.COOLDOWN_TICKS.get());
+        player.getCooldowns().addCooldown(this, ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
         if (!ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get()) {
             itemStack.consume(1, player);
         }
@@ -62,7 +62,7 @@ public final class ThrowableRopeConnectorItem extends Item implements Projectile
 
     @Override
     public Projectile asProjectile(Level level, Position pos, ItemStack stack, Direction direction) {
-        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, pos.x(), pos.y(), pos.z(), ModCommonConfig.MAX_THROW_DISTANCE.get());
+        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, pos.x(), pos.y(), pos.z(), ModCommonConfig.getClampedThrowDistance());
         projectile.setConsumeOnSuccessOnly(ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get());
         projectile.setItem(stack);
         return projectile;

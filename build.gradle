@@ -34,6 +34,18 @@ base {
     archivesName = mod_id
 }
 
+def aeronauticsBundleJar = file("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-aeronautics-bundled-1.21.1-1.2.1.jar")
+def extractedSimulatedJar = layout.buildDirectory.file("local-mod-deps/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.2.1.jar")
+
+tasks.register("extractSimulatedJar", Copy) {
+    from(zipTree(aeronauticsBundleJar)) {
+        include "META-INF/jarjar/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.2.1.jar"
+        eachFile { details -> details.path = details.name }
+        includeEmptyDirs = false
+    }
+    into extractedSimulatedJar.map { it.asFile.parentFile }
+}
+
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
@@ -105,6 +117,8 @@ dependencies {
     // For all intends and purposes: You can treat this dependency as if it is a normal library you would use.
     implementation "net.neoforged:neoforge:${neo_version}"
     compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
+    compileOnly files(extractedSimulatedJar)
+    compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/sable-neoforge-1.21.1-1.2.2.jar")
     compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
     compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
     localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
@@ -171,6 +185,7 @@ publishing {
 }
 
 tasks.withType(JavaCompile).configureEach {
+    dependsOn tasks.named("extractSimulatedJar")
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
 

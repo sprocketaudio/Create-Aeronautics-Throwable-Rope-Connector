@@ -20,6 +20,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
+import org.jetbrains.annotations.Nullable;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
@@ -59,7 +60,7 @@ public final class ThrowableRopeConnectorPlacement {
         }
 
         giveToSourceSlot(player, maybeRopeStack.get(), sourceSlot, consumeOnSuccessOnly);
-        player.getCooldowns().addCooldown(ModItems.THROWABLE_ROPE_CONNECTOR.get(), ModCommonConfig.COOLDOWN_TICKS.get());
+        player.getCooldowns().addCooldown(ModItems.THROWABLE_ROPE_CONNECTOR.get(), ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
 
         if (ModCommonConfig.PLAY_PARTICLES.get()) {
             level.sendParticles(
@@ -76,6 +77,34 @@ public final class ThrowableRopeConnectorPlacement {
         }
 
         return true;
+    }
+
+    public static Optional<BlockPos> placeConnectorFromMountedLauncher(ServerLevel level, BlockHitResult hitResult) {
+        Optional<PlacementTarget> target = resolvePlacementTarget(level, null, hitResult);
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+
+        Optional<BlockItem> maybeConnectorItem = CreateSimulatedIntegration.getRopeConnectorItem();
+        if (maybeConnectorItem.isEmpty()) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Simulated integration registry lookup failed.");
+            return Optional.empty();
+        }
+
+        ItemStack connectorPlacementStack = new ItemStack(maybeConnectorItem.get());
+        BlockPlaceContext placeContext = new net.minecraft.world.item.context.DirectionalPlaceContext(
+                level,
+                target.get().placePos(),
+                target.get().face(),
+                connectorPlacementStack,
+                target.get().face()
+        );
+        InteractionResult placementResult = maybeConnectorItem.get().place(placeContext);
+        if (!placementResult.consumesAction()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(target.get().placePos());
     }
 
     public static void returnThrowableItem(Player player, int sourceSlot) {
@@ -98,16 +127,16 @@ public final class ThrowableRopeConnectorPlacement {
         player.level().playSound(null, player.blockPosition(), SoundEvents.DISPENSER_FAIL, SoundSource.PLAYERS, 0.5F, 1.0F);
     }
 
-    private static Optional<PlacementTarget> resolvePlacementTarget(Level level, Player player, BlockHitResult hitResult) {
+    private static Optional<PlacementTarget> resolvePlacementTarget(Level level, @Nullable Player player, BlockHitResult hitResult) {
         BlockPos targetPos = hitResult.getBlockPos();
         Direction face = hitResult.getDirection();
         BlockPos placePos = targetPos.relative(face);
 
-        if (!level.mayInteract(player, targetPos) || !level.mayInteract(player, placePos)) {
+        if (player != null && (!level.mayInteract(player, targetPos) || !level.mayInteract(player, placePos))) {
             return Optional.empty();
         }
 
-        if (!player.mayUseItemAt(placePos, face, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()))) {
+        if (player != null && !player.mayUseItemAt(placePos, face, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()))) {
             return Optional.empty();
         }
 

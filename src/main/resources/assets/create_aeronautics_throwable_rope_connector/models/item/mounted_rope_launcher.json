@@ -1,0 +1,20 @@
+{
+  "parent": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher",
+  "gui_light": "front",
+  "display": {
+    "gui": {
+      "rotation": [24, 225, 0],
+      "translation": [0, 1, 0],
+      "scale": [0.72, 0.72, 0.72]
+    },
+    "ground": {
+      "translation": [0, 2, 0],
+      "scale": [0.5, 0.5, 0.5]
+    },
+    "fixed": {
+      "rotation": [0, 180, 0],
+      "translation": [0, 0, -2],
+      "scale": [0.7, 0.7, 0.7]
+    }
+  }
+}

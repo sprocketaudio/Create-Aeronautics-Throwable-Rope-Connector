@@ -68,7 +68,7 @@ public final class RopeConnectorLauncherItem extends Item implements CustomArmPo
                 .subtract(player.position().add(0.0D, player.getEyeHeight(), 0.0D));
         Vec3 motion = player.getLookAngle().add(correction).normalize().scale(LAUNCHER_VELOCITY);
 
-        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, barrelPos.x, barrelPos.y, barrelPos.z, ModCommonConfig.LAUNCHER_MAX_DISTANCE.get());
+        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, barrelPos.x, barrelPos.y, barrelPos.z, ModCommonConfig.getClampedLauncherMaxDistance());
         projectile.setOwner(player);
         projectile.setSourceSlot(getSourceSlot(player, ammoHand));
         projectile.setTrailFromOffhand(usedHand == InteractionHand.OFF_HAND);
@@ -83,7 +83,7 @@ public final class RopeConnectorLauncherItem extends Item implements CustomArmPo
         }
 
         player.awardStat(Stats.ITEM_USED.get(this));
-        player.getCooldowns().addCooldown(this, ModCommonConfig.COOLDOWN_TICKS.get());
+        player.getCooldowns().addCooldown(this, ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
         sendShootPackets(player, usedHand, barrelPos, 0.8F);
         return new InteractionResultHolder<>(InteractionResult.SUCCESS, launcherStack);
     }

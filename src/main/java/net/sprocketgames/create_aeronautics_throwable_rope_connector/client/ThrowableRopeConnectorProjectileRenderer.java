@@ -77,7 +77,13 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
             return;
         }
 
-        Vec3 handPos = this.getPlayerHandPos(player, entity.isTrailFromOffhand(), entity.isTrailFromLauncher(), partialTicks);
+        Vec3 handPos = this.getTrailStartPos(
+                player,
+                entity.isTrailFromOffhand(),
+                entity.isTrailFromLauncher(),
+                entity.isTrailFromMountedLauncher(),
+                partialTicks
+        );
         Vec3 connectorPos = entity.getPosition(partialTicks).add(0.0D, 0.15D, 0.0D);
         float x = (float) (handPos.x - connectorPos.x);
         float y = (float) (handPos.y - connectorPos.y);
@@ -88,7 +94,7 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
         PoseStack.Pose pose = poseStack.last();
         Vector3f cameraLeft = this.entityRenderDispatcher.camera.getLeftVector();
         Vector3f cameraUp = this.entityRenderDispatcher.camera.getUpVector();
-        float halfWidth = ModCommonConfig.PROJECTILE_ROPE_TRAIL_WIDTH.get().floatValue() * 0.5F;
+        float halfWidth = (float) (ModCommonConfig.DEFAULT_PROJECTILE_ROPE_TRAIL_WIDTH * 0.5D);
         float leftX = cameraLeft.x() * halfWidth;
         float leftY = cameraLeft.y() * halfWidth;
         float leftZ = cameraLeft.z() * halfWidth;
@@ -107,7 +113,21 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
         poseStack.popPose();
     }
 
-    private Vec3 getPlayerHandPos(Player player, boolean offhand, boolean launcher, float partialTicks) {
+    private Vec3 getTrailStartPos(Player player, boolean offhand, boolean launcher, boolean mountedLauncher, float partialTicks) {
+        if (mountedLauncher) {
+            if (this.entityRenderDispatcher.options.getCameraType().isFirstPerson() && player == Minecraft.getInstance().player) {
+                double fovScale = 960.0D / (double) this.entityRenderDispatcher.options.fov().get().intValue();
+                Vec3 nearPlaneOffset = this.entityRenderDispatcher
+                        .camera
+                        .getNearPlane()
+                        .getPointOnPlane(0.0F, -1.28F)
+                        .scale(fovScale);
+                return player.getEyePosition(partialTicks).add(nearPlaneOffset);
+            }
+
+            return player.getEyePosition(partialTicks).add(player.getLookAngle().normalize().scale(0.45D));
+        }
+
         if (launcher) {
             return ShootableGadgetItemMethods.getGunBarrelVec(player, !offhand, new Vec3(0.75F, -0.15F, 1.5F));
         }
