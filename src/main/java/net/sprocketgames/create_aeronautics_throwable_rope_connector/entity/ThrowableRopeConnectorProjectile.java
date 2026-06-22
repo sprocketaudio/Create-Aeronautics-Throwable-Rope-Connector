@@ -44,6 +44,14 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
             ThrowableRopeConnectorProjectile.class,
             EntityDataSerializers.BOOLEAN
     );
+    private static final EntityDataAccessor<Boolean> DATA_HAS_MOUNTED_SOURCE = SynchedEntityData.defineId(
+            ThrowableRopeConnectorProjectile.class,
+            EntityDataSerializers.BOOLEAN
+    );
+    private static final EntityDataAccessor<BlockPos> DATA_MOUNTED_SOURCE_POS = SynchedEntityData.defineId(
+            ThrowableRopeConnectorProjectile.class,
+            EntityDataSerializers.BLOCK_POS
+    );
 
     private Vec3 origin = Vec3.ZERO;
     private double maxThrowDistance = 10.0D;
@@ -73,6 +81,8 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         builder.define(DATA_TRAIL_FROM_OFFHAND, false);
         builder.define(DATA_TRAIL_FROM_LAUNCHER, false);
         builder.define(DATA_TRAIL_FROM_MOUNTED_LAUNCHER, false);
+        builder.define(DATA_HAS_MOUNTED_SOURCE, false);
+        builder.define(DATA_MOUNTED_SOURCE_POS, BlockPos.ZERO);
     }
 
     @Override
@@ -114,6 +124,15 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
 
     public void setMountedSource(BlockPos mountedSourcePos) {
         this.mountedSourcePos = mountedSourcePos.immutable();
+        this.entityData.set(DATA_HAS_MOUNTED_SOURCE, true);
+        this.entityData.set(DATA_MOUNTED_SOURCE_POS, this.mountedSourcePos);
+    }
+
+    public BlockPos getMountedSourcePos() {
+        if (this.entityData.get(DATA_HAS_MOUNTED_SOURCE)) {
+            return this.entityData.get(DATA_MOUNTED_SOURCE_POS);
+        }
+        return this.mountedSourcePos;
     }
 
     @Override
@@ -190,8 +209,9 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         compound.putBoolean("TrailFromOffhand", this.isTrailFromOffhand());
         compound.putBoolean("TrailFromLauncher", this.isTrailFromLauncher());
         compound.putBoolean("TrailFromMountedLauncher", this.isTrailFromMountedLauncher());
-        if (this.mountedSourcePos != null) {
-            compound.putLong("MountedSourcePos", this.mountedSourcePos.asLong());
+        BlockPos mountedSourcePos = this.getMountedSourcePos();
+        if (mountedSourcePos != null) {
+            compound.putLong("MountedSourcePos", mountedSourcePos.asLong());
         }
     }
 
@@ -205,7 +225,13 @@ public final class ThrowableRopeConnectorProjectile extends ThrowableItemProject
         this.setTrailFromOffhand(compound.getBoolean("TrailFromOffhand"));
         this.setTrailFromLauncher(compound.getBoolean("TrailFromLauncher"));
         this.setTrailFromMountedLauncher(compound.getBoolean("TrailFromMountedLauncher"));
-        this.mountedSourcePos = compound.contains("MountedSourcePos") ? BlockPos.of(compound.getLong("MountedSourcePos")) : null;
+        if (compound.contains("MountedSourcePos")) {
+            this.setMountedSource(BlockPos.of(compound.getLong("MountedSourcePos")));
+        } else {
+            this.mountedSourcePos = null;
+            this.entityData.set(DATA_HAS_MOUNTED_SOURCE, false);
+            this.entityData.set(DATA_MOUNTED_SOURCE_POS, BlockPos.ZERO);
+        }
     }
 
     private void failAndReturn(Component message) {

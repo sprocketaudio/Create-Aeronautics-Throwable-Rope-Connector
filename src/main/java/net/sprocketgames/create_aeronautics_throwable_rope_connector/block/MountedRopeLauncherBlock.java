@@ -96,6 +96,10 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, net.minecraft.world.entity.LivingEntity placer, ItemStack stack) {
         level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
+        MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, pos);
+        if (blockEntity != null) {
+            blockEntity.handleRedstoneSignal(this.isFirePowered(level, pos, state), this.isReleasePowered(level, pos, state));
+        }
     }
 
     private BlockPos getBasePos(BlockState state, BlockPos pos) {
@@ -105,25 +109,54 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
         BlockPos basePos = this.getBasePos(state, pos);
-        if (stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
-            if (!level.isClientSide()) {
-                MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
-                if (blockEntity != null && player instanceof ServerPlayer serverPlayer) {
-                    blockEntity.loadAmmo(serverPlayer, hand);
+        if (!level.isClientSide()) {
+            MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
+            ServerPlayer serverPlayer = player instanceof ServerPlayer sp ? sp : null;
+            if (blockEntity != null && serverPlayer != null) {
+                if (stack.isEmpty() && player.isCrouching()) {
+                    if (blockEntity.isConnected()) {
+                        blockEntity.tryRemoteRelease(serverPlayer);
+                    } else {
+                        blockEntity.unloadAmmo(player);
+                    }
+                    return ItemInteractionResult.SUCCESS;
                 }
+
+                if (stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
+                    blockEntity.loadAmmo(serverPlayer, hand);
+                    return ItemInteractionResult.SUCCESS;
+                }
+
+                blockEntity.mount(serverPlayer);
+                return ItemInteractionResult.SUCCESS;
             }
+        }
+
+        if (stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
             return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
 
-        return super.useItemOn(stack, state, level, basePos, player, hand, hitResult);
+        return ItemInteractionResult.sidedSuccess(level.isClientSide());
     }
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
+        BlockPos basePos = this.getBasePos(state, pos);
         if (!level.isClientSide()) {
-            MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, this.getBasePos(state, pos));
+            MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
             if (blockEntity != null) {
                 ServerPlayer serverPlayer = player instanceof ServerPlayer sp ? sp : null;
+                if (player.isCrouching()) {
+                    if (serverPlayer != null) {
+                        if (blockEntity.isConnected()) {
+                            blockEntity.tryRemoteRelease(serverPlayer);
+                        } else {
+                            blockEntity.unloadAmmo(player);
+                        }
+                    }
+                    return InteractionResult.SUCCESS;
+                }
+
                 if (serverPlayer != null) {
                     blockEntity.mount(serverPlayer);
                 }
@@ -131,6 +164,46 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
         }
 
         return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    @Override
+    public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos, boolean isMoving) {
+        super.neighborChanged(state, level, pos, block, fromPos, isMoving);
+        if (level.isClientSide()) {
+            return;
+        }
+
+        BlockPos basePos = this.getBasePos(state, pos);
+        MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
+        if (blockEntity != null) {
+            BlockState baseState = level.getBlockState(basePos);
+            blockEntity.handleRedstoneSignal(
+                    this.isFirePowered(level, basePos, baseState),
+                    this.isReleasePowered(level, basePos, baseState)
+            );
+        }
+    }
+
+    private boolean isFirePowered(Level level, BlockPos basePos, BlockState state) {
+        return this.isSidePowered(level, basePos, state, state.getValue(FACING).getClockWise());
+    }
+
+    private boolean isReleasePowered(Level level, BlockPos basePos, BlockState state) {
+        return this.isSidePowered(level, basePos, state, state.getValue(FACING).getCounterClockWise());
+    }
+
+    private boolean isSidePowered(Level level, BlockPos basePos, BlockState state, Direction side) {
+        if (!(state.getBlock() instanceof MountedRopeLauncherBlock)) {
+            return false;
+        }
+
+        return this.hasInputFrom(level, basePos, side) || this.hasInputFrom(level, basePos.above(), side);
+    }
+
+    private boolean hasInputFrom(Level level, BlockPos targetPos, Direction side) {
+        BlockPos neighborPos = targetPos.relative(side);
+        BlockState neighborState = level.getBlockState(neighborPos);
+        return neighborState.getSignal(level, neighborPos, side.getOpposite()) > 0;
     }
 
     @Override
@@ -156,21 +229,6 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
             }
         }
         super.onRemove(state, level, pos, newState, moving);
-    }
-
-    @Override
-    public int getSignal(BlockState state, BlockGetter level, BlockPos pos, Direction direction) {
-        MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, this.getBasePos(state, pos));
-        if (blockEntity == null) {
-            return 0;
-        }
-
-        return blockEntity.isConnected() ? 15 : 0;
-    }
-
-    @Override
-    public boolean isSignalSource(BlockState state) {
-        return true;
     }
 
     @Nullable

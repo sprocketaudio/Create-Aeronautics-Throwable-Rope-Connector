@@ -51,7 +51,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
 
     public void release(ServerPlayer player) {
         if (this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
-            launcher.release(player);
+            launcher.tryRemoteRelease(player, false);
         }
     }
 

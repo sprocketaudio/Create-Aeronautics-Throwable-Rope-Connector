@@ -20,6 +20,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
@@ -73,17 +74,20 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
         }
 
         Entity owner = entity.getOwner();
-        if (!(owner instanceof Player player)) {
+        Vec3 handPos;
+        if (owner instanceof Player player) {
+            handPos = this.getTrailStartPos(
+                    player,
+                    entity.isTrailFromOffhand(),
+                    entity.isTrailFromLauncher(),
+                    entity.isTrailFromMountedLauncher(),
+                    partialTicks
+            );
+        } else if (entity.isTrailFromMountedLauncher()) {
+            handPos = this.getMountedLauncherTrailStartPos(entity);
+        } else {
             return;
         }
-
-        Vec3 handPos = this.getTrailStartPos(
-                player,
-                entity.isTrailFromOffhand(),
-                entity.isTrailFromLauncher(),
-                entity.isTrailFromMountedLauncher(),
-                partialTicks
-        );
         Vec3 connectorPos = entity.getPosition(partialTicks).add(0.0D, 0.15D, 0.0D);
         float x = (float) (handPos.x - connectorPos.x);
         float y = (float) (handPos.y - connectorPos.y);
@@ -104,13 +108,22 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
         for (int segment = 0; segment < 24; segment++) {
             float start = fraction(segment, 24);
             float end = fraction(segment + 1, 24);
-            boolean launcherTrail = entity.isTrailFromLauncher();
+            boolean launcherTrail = entity.isTrailFromLauncher() || entity.isTrailFromMountedLauncher();
             ropeFace(x, y, z, consumer, pose, start, end, leftX, leftY, leftZ, upX, upY, upZ, packedLight, launcherTrail);
             ropeFace(x, y, z, consumer, pose, start, end, -leftX, -leftY, -leftZ, upX, upY, upZ, packedLight, launcherTrail);
             ropeFace(x, y, z, consumer, pose, start, end, upX, upY, upZ, leftX, leftY, leftZ, packedLight, launcherTrail);
             ropeFace(x, y, z, consumer, pose, start, end, -upX, -upY, -upZ, leftX, leftY, leftZ, packedLight, launcherTrail);
         }
         poseStack.popPose();
+    }
+
+    private Vec3 getMountedLauncherTrailStartPos(ThrowableRopeConnectorProjectile entity) {
+        BlockPos mountedSourcePos = entity.getMountedSourcePos();
+        if (mountedSourcePos != null && entity.level().getBlockEntity(mountedSourcePos) instanceof MountedRopeLauncherBlockEntity mountedLauncher) {
+            return mountedLauncher.getAutomatedTrailStartPosition();
+        }
+
+        return entity.position();
     }
 
     private Vec3 getTrailStartPos(Player player, boolean offhand, boolean launcher, boolean mountedLauncher, float partialTicks) {

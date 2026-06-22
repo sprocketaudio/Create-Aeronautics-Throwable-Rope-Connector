@@ -16,13 +16,19 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.Containers;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.capabilities.Capabilities;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.items.IItemHandler;
 import net.neoforged.neoforge.items.ItemStackHandler;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
@@ -30,6 +36,8 @@ import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.Throwa
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlockEntityTypes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 import org.jetbrains.annotations.Nullable;
+
+import java.lang.reflect.Method;
 
 public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private static final float MIN_MOUNTED_PITCH = -30.0F;
@@ -40,6 +48,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private static final Component BLOCKED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_blocked");
     private static final Component ANCHOR_CONNECTED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_anchor_connected");
     private static final Component ANCHOR_FAILED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_anchor_failed");
+    private static final Component RELEASE_DISABLED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_release_disabled");
 
     private final ItemStackHandler inventory = new ItemStackHandler(1) {
         @Override
@@ -52,12 +61,45 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             setChanged();
         }
     };
+    private final IItemHandler automationInventory = new IItemHandler() {
+        @Override
+        public int getSlots() {
+            return inventory.getSlots();
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return inventory.getStackInSlot(slot);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return inventory.insertItem(slot, stack, simulate);
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return inventory.getSlotLimit(slot);
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return inventory.isItemValid(slot, stack);
+        }
+    };
 
     private BlockPos remoteConnectorPos;
     private float aimYaw;
     private float aimPitch;
     private long nextFireGameTime;
     private boolean pendingAmmoConsumed;
+    private boolean fireRedstonePowered;
+    private boolean releaseRedstonePowered;
 
     public MountedRopeLauncherBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -66,6 +108,14 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     public MountedRopeLauncherBlockEntity(BlockPos pos, BlockState state) {
         this(ModBlockEntityTypes.MOUNTED_ROPE_LAUNCHER.get(), pos, state);
+    }
+
+    public static void registerCapabilities(RegisterCapabilitiesEvent event) {
+        event.registerBlockEntity(
+                Capabilities.ItemHandler.BLOCK,
+                ModBlockEntityTypes.MOUNTED_ROPE_LAUNCHER.get(),
+                (blockEntity, side) -> blockEntity.getAutomationInventory()
+        );
     }
 
     public void loadAmmo(ServerPlayer player, InteractionHand hand) {
@@ -99,6 +149,13 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         Vec3 direction = Vec3.directionFromRotation(clampedPitch, clampedYaw).normalize();
         Vec3 launchPos = player.getEyePosition().add(direction.scale(0.45D));
         this.fireInDirection(player, direction, launchPos, false);
+    }
+
+    public void fireFromSavedAim() {
+        float clampedPitch = clampMountedPitch(this.aimPitch);
+        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        Vec3 direction = Vec3.directionFromRotation(clampedPitch, clampedYaw).normalize();
+        this.fireInDirection(null, direction, this.getRedstoneBarrelPosition(), false);
     }
 
     private void fireInDirection(@Nullable ServerPlayer player, Vec3 direction, Vec3 launchPos, boolean checkFixedFront) {
@@ -241,7 +298,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return false;
         }
 
-        if (!localHolder.createRope(remoteHolder)) {
+        if (!this.tryCreateRopeCompat(localHolder, remoteHolder)) {
             this.message(player, ANCHOR_FAILED);
             return false;
         }
@@ -268,15 +325,16 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         }
 
         RopeStrandHolderBehavior localHolder = this.getBehavior();
+        boolean ropeReleased = true;
         if (localHolder != null && localHolder.isAttached()) {
-            if (player != null) {
-                localHolder.destroyRope(player, this.getAttachmentPoint());
-            } else {
-                localHolder.detachRope();
+            ServerPlayer releasePlayer = player != null ? player : this.findAutomationReleasePlayer(level);
+            ropeReleased = this.tryDestroyRopeCompat(localHolder, releasePlayer, this.getAttachmentPoint());
+            if (!ropeReleased) {
+                return;
             }
         }
 
-        if (ModCommonConfig.MOUNTED_REMOVE_PLACED_CONNECTOR_ON_RELEASE.get() && this.remoteConnectorPos != null) {
+        if (this.remoteConnectorPos != null && ModCommonConfig.canMountedLauncherRemoteRelease()) {
             level.removeBlock(this.remoteConnectorPos, false);
         }
 
@@ -303,6 +361,73 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         return this.inventory.getStackInSlot(0).getCount();
     }
 
+    public IItemHandler getAutomationInventory() {
+        return this.automationInventory;
+    }
+
+    public boolean unloadAmmo(Player player) {
+        ItemStack unloaded = this.inventory.getStackInSlot(0).copy();
+        if (unloaded.isEmpty()) {
+            return false;
+        }
+
+        this.inventory.setStackInSlot(0, ItemStack.EMPTY);
+        this.setChanged();
+        this.playClick();
+
+        if (!player.getInventory().add(unloaded)) {
+            ItemEntity itemEntity = player.drop(unloaded, false);
+            if (itemEntity != null) {
+                Vec3 spawnPos = player.position().add(0.0D, player.getBbHeight() * 0.45D, 0.0D);
+                itemEntity.setPos(spawnPos.x, spawnPos.y, spawnPos.z);
+                itemEntity.setDeltaMovement(Vec3.ZERO);
+            }
+        }
+
+        return true;
+    }
+
+    public void handleRedstoneSignal(boolean firePowered, boolean releasePowered) {
+        if (!ModCommonConfig.canMountedLauncherFireFromRedstone()) {
+            this.fireRedstonePowered = firePowered;
+            this.releaseRedstonePowered = releasePowered;
+            return;
+        }
+
+        boolean fireRisingEdge = firePowered && !this.fireRedstonePowered;
+        boolean releaseRisingEdge = releasePowered && !this.releaseRedstonePowered;
+        this.fireRedstonePowered = firePowered;
+        this.releaseRedstonePowered = releasePowered;
+
+        if (fireRisingEdge) {
+            this.fireFromSavedAim();
+        }
+
+        if (releaseRisingEdge) {
+            this.tryRemoteRelease(null, false);
+        }
+    }
+
+    public boolean tryRemoteRelease(@Nullable ServerPlayer player) {
+        return this.tryRemoteRelease(player, true);
+    }
+
+    public boolean tryRemoteRelease(@Nullable ServerPlayer player, boolean showDisabledMessage) {
+        if (!this.isConnected()) {
+            return false;
+        }
+
+        if (this.remoteConnectorPos != null && !ModCommonConfig.canMountedLauncherRemoteRelease()) {
+            if (showDisabledMessage) {
+                this.message(player, RELEASE_DISABLED);
+            }
+            return false;
+        }
+
+        this.release(player);
+        return true;
+    }
+
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.write(tag, registries, clientPacket);
@@ -310,6 +435,8 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         tag.putFloat("AimYaw", this.aimYaw);
         tag.putFloat("AimPitch", this.aimPitch);
         tag.putBoolean("PendingAmmoConsumed", this.pendingAmmoConsumed);
+        tag.putBoolean("FireRedstonePowered", this.fireRedstonePowered);
+        tag.putBoolean("ReleaseRedstonePowered", this.releaseRedstonePowered);
         if (this.remoteConnectorPos != null) {
             tag.putLong("RemoteConnectorPos", this.remoteConnectorPos.asLong());
         }
@@ -322,6 +449,8 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         this.aimYaw = tag.getFloat("AimYaw");
         this.aimPitch = tag.getFloat("AimPitch");
         this.pendingAmmoConsumed = tag.getBoolean("PendingAmmoConsumed");
+        this.fireRedstonePowered = tag.getBoolean("FireRedstonePowered");
+        this.releaseRedstonePowered = tag.getBoolean("ReleaseRedstonePowered");
         this.remoteConnectorPos = tag.contains("RemoteConnectorPos") ? BlockPos.of(tag.getLong("RemoteConnectorPos")) : null;
     }
 
@@ -362,6 +491,24 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         );
     }
 
+    private Vec3 getRedstoneBarrelPosition() {
+        Direction facing = this.getFacing();
+        return this.worldPosition.getCenter().add(
+                facing.getStepX() * 0.68D,
+                0.82D,
+                facing.getStepZ() * 0.68D
+        );
+    }
+
+    public Vec3 getAutomatedTrailStartPosition() {
+        Direction facing = this.getFacing();
+        return this.worldPosition.getCenter().add(
+                facing.getStepX() * 0.3D,
+                0.42D,
+                facing.getStepZ() * 0.3D
+        );
+    }
+
     private Vec3 getAttachmentPoint() {
         return this.worldPosition.getCenter();
     }
@@ -389,5 +536,94 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             Containers.dropItemStack(this.level, this.worldPosition.getX() + 0.5D, this.worldPosition.getY() + 0.5D, this.worldPosition.getZ() + 0.5D, remainder);
         }
         this.pendingAmmoConsumed = false;
+    }
+
+    @Nullable
+    private ServerPlayer findAutomationReleasePlayer(ServerLevel level) {
+        return level.players().isEmpty() ? null : level.players().getFirst();
+    }
+
+    private boolean tryCreateRopeCompat(RopeStrandHolderBehavior localHolder, RopeStrandHolderBehavior remoteHolder) {
+        try {
+            Method directMethod = localHolder.getClass().getMethod("createRope", remoteHolder.getClass());
+            Object result = directMethod.invoke(localHolder, remoteHolder);
+            if (result instanceof Boolean booleanResult) {
+                return booleanResult;
+            }
+            return localHolder.isAttached() || remoteHolder.isAttached();
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                Method twoArgMethod = localHolder.getClass().getMethod("createRope", remoteHolder.getClass(), boolean.class);
+                Object result = twoArgMethod.invoke(localHolder, remoteHolder, false);
+                if (result instanceof Boolean booleanResult) {
+                    return booleanResult;
+                }
+                return localHolder.isAttached() || remoteHolder.isAttached();
+            } catch (ReflectiveOperationException ignoredAgain) {
+                for (Method method : localHolder.getClass().getMethods()) {
+                    if (!method.getName().equals("createRope")) {
+                        continue;
+                    }
+
+                    Class<?>[] parameterTypes = method.getParameterTypes();
+                    if (parameterTypes.length == 1 && parameterTypes[0].isInstance(remoteHolder)) {
+                        try {
+                            Object result = method.invoke(localHolder, remoteHolder);
+                            if (result instanceof Boolean booleanResult) {
+                                return booleanResult;
+                            }
+                            return localHolder.isAttached() || remoteHolder.isAttached();
+                        } catch (ReflectiveOperationException reflectiveOperationException) {
+                            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Failed to invoke one-arg Simulated createRope compat path.", reflectiveOperationException);
+                            return false;
+                        }
+                    }
+
+                    if (parameterTypes.length == 2
+                            && parameterTypes[0].isInstance(remoteHolder)
+                            && parameterTypes[1] == boolean.class) {
+                        try {
+                            Object result = method.invoke(localHolder, remoteHolder, false);
+                            if (result instanceof Boolean booleanResult) {
+                                return booleanResult;
+                            }
+                            return localHolder.isAttached() || remoteHolder.isAttached();
+                        } catch (ReflectiveOperationException reflectiveOperationException) {
+                            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Failed to invoke two-arg Simulated createRope compat path.", reflectiveOperationException);
+                            return false;
+                        }
+                    }
+                }
+
+                CreateAeronauticsThrowableRopeConnector.LOGGER.error("Could not find a compatible Simulated createRope method for Mounted Rope Launcher.");
+                return false;
+            }
+        } catch (Throwable throwable) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to create rope link.", throwable);
+            return false;
+        }
+    }
+
+    private boolean tryDestroyRopeCompat(RopeStrandHolderBehavior localHolder, @Nullable ServerPlayer player, Vec3 attachmentPoint) {
+        try {
+            Method threeArgMethod = localHolder.getClass().getMethod("destroyRope", ServerPlayer.class, Vec3.class, boolean.class);
+            threeArgMethod.invoke(localHolder, player, attachmentPoint, false);
+            return !localHolder.isAttached();
+        } catch (ReflectiveOperationException ignored) {
+        } catch (Throwable throwable) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to destroy rope link via three-arg Simulated API.", throwable);
+            return false;
+        }
+
+        try {
+            Method twoArgMethod = localHolder.getClass().getMethod("destroyRope", ServerPlayer.class, Vec3.class);
+            twoArgMethod.invoke(localHolder, player, attachmentPoint);
+            return !localHolder.isAttached();
+        } catch (ReflectiveOperationException reflectiveOperationException) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Could not find a compatible Simulated destroyRope method for Mounted Rope Launcher.", reflectiveOperationException);
+        } catch (Throwable throwable) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to destroy rope link.", throwable);
+        }
+        return false;
     }
 }

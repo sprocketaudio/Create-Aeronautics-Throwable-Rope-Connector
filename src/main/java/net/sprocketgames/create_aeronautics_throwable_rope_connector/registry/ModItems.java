@@ -6,6 +6,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.MountedRopeLauncherBlockItem;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.RopeConnectorLauncherItem;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.ThrowableRopeConnectorItem;
 
@@ -24,7 +25,7 @@ public final class ModItems {
 
     public static final DeferredItem<BlockItem> MOUNTED_ROPE_LAUNCHER = ITEMS.register(
             "mounted_rope_launcher",
-            () -> new BlockItem(ModBlocks.MOUNTED_ROPE_LAUNCHER.get(), new Item.Properties())
+            () -> new MountedRopeLauncherBlockItem(ModBlocks.MOUNTED_ROPE_LAUNCHER.get(), new Item.Properties())
     );
 
     private ModItems() {

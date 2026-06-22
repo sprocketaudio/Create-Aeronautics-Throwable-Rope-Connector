@@ -13,7 +13,18 @@
   "message.create_aeronautics_throwable_rope_connector.mounted_anchor_connected": "Anchor connected",
   "message.create_aeronautics_throwable_rope_connector.mounted_anchor_released": "Anchor released",
   "message.create_aeronautics_throwable_rope_connector.mounted_anchor_failed": "No valid anchor found",
-  "message.create_aeronautics_throwable_rope_connector.mounted_controls": "Left click fire | Right click remove rope | Shift dismount | Ammo: %s",
+  "message.create_aeronautics_throwable_rope_connector.mounted_release_disabled": "Remote release disabled in config",
+  "message.create_aeronautics_throwable_rope_connector.mounted_controls": "Left Click: Fire | Right Click: Release Anchor | Sneak: Dismount | Ammo: %s",
+  "message.create_aeronautics_throwable_rope_connector.mounted_controls_release_disabled": "Left Click: Fire | Right Click: Release Disabled | Sneak: Dismount | Ammo: %s",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.load": "Right-click with Throwable Rope Connector to load ammo",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.mount": "Right-click to mount",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.release": "Sneak + Right-click with empty hand to release anchor",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.unload": "Sneak + Right-click with empty hand to unload ammo when not connected",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.mounted_fire": "While mounted: Left-click to fire",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.mounted_release": "While mounted: Right-click to release anchor",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.mounted_dismount": "While mounted: Sneak to dismount",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.redstone_fire_side": "Red marker side: redstone pulse fires using saved aim",
+  "tooltip.create_aeronautics_throwable_rope_connector.mounted_rope_launcher.redstone_release_side": "Amber marker side: redstone pulse releases anchor",
   "itemGroup.create_aeronautics_throwable_rope_connector": "Throwable Rope Connector",
   "create_aeronautics_throwable_rope_connector.configuration.title": "Throwable Rope Connector Config",
   "create_aeronautics_throwable_rope_connector.configuration.section.create_aeronautics_throwable_rope_connector-common.toml": "Throwable Rope Connector",
@@ -26,5 +37,6 @@
   "create_aeronautics_throwable_rope_connector.configuration.playParticles": "Play Particles",
   "create_aeronautics_throwable_rope_connector.configuration.showFailureMessages": "Show Failure Messages",
   "create_aeronautics_throwable_rope_connector.configuration.showProjectileRopeTrail": "Show Projectile Rope Trail",
-  "create_aeronautics_throwable_rope_connector.configuration.removePlacedConnectorOnRelease": "Remove Placed Connector On Release"
+  "create_aeronautics_throwable_rope_connector.configuration.mountedRedstoneFire": "Mounted Redstone Fire",
+  "create_aeronautics_throwable_rope_connector.configuration.mountedAnchorReleaseMode": "Mounted Anchor Release Mode"
 }

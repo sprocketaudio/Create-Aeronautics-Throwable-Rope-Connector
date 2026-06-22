@@ -8,6 +8,8 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.client.CreateAeronauticsThrowableRopeConnectorClient;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.ModNetworking;
@@ -30,6 +32,7 @@ public final class CreateAeronauticsThrowableRopeConnector {
         ModItems.register(modEventBus);
         ModCreativeTabs.register(modEventBus);
         modEventBus.addListener(ModNetworking::register);
+        modEventBus.addListener(this::registerCapabilities);
         modEventBus.addListener(this::onConfigLoaded);
         modEventBus.addListener(this::onConfigReloaded);
         modContainer.registerConfig(ModConfig.Type.COMMON, ModCommonConfig.SPEC);
@@ -52,5 +55,9 @@ public final class CreateAeronauticsThrowableRopeConnector {
         }
 
         ModCommonConfig.correctRangeValuesToSimulatedMax();
+    }
+
+    private void registerCapabilities(RegisterCapabilitiesEvent event) {
+        MountedRopeLauncherBlockEntity.registerCapabilities(event);
     }
 }

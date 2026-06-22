@@ -1,85 +1,60 @@
 # Create Aeronautics: Throwable Rope Connector
 
-Throw rope connectors instead of climbing, bridging, or awkwardly landing just to place one.
+Place rope connectors from a distance instead of awkwardly climbing over to every docking point.
 
-Create Aeronautics: Throwable Rope Connector adds three ways to place rope connections for Create Aeronautics / Create Simulated setups: throw a connector by hand, fire one from the Rope Connector Launcher, or use the Mounted Rope Launcher for ship-mounted anchoring. Successful shots place a normal Create Simulated Rope Connector and give you a normal Rope Coupling that is already linked to it, ready to attach to a Rope Winch.
+Create Aeronautics: Throwable Rope Connector adds three ways to place rope connections for Create Aeronautics / Create Simulated setups:
+
+- throw a connector by hand
+- fire one from the Rope Connector Launcher
+- use the Mounted Rope Launcher for ship-mounted anchoring
+
+Successful throws and shots place a normal Create Simulated Rope Connector and give you a normal Rope Coupling that is already linked to it, ready to attach to a Rope Winch.
 
 ## Features
 
-- Adds the Throwable Rope Connector item.
-- Adds the Rope Connector Launcher item.
-- Adds the Mounted Rope Launcher block.
-- Throws like a snowball and uses the rope connector model.
-- Launcher fires Throwable Rope Connectors from the other hand at longer range.
-- Mounted launcher lets a player mount, aim, fire, and release rope connections directly from the block.
-- Places a normal Create Simulated Rope Connector on valid block faces.
-- Returns a normal Create Simulated Rope Coupling after successful placement.
-- Returned Rope Coupling is already linked to the placed connector.
-- Returned Rope Coupling appears in the same slot the throwable connector was used from.
+- Throwable Rope Connector item for hand-thrown placement.
+- Rope Connector Launcher for longer-range placement.
+- Mounted Rope Launcher for ship-mounted firing and anchoring.
+- Successful placement returns a linked Rope Coupling ready for a Rope Winch.
 - Failed shots do not consume ammo by default.
-- Configurable throw, launcher, and mounted launcher range.
-- Configurable throw speed, particles, projectile rope trail, and failure messages.
-- Works server-side for multiplayer validation.
+- Configurable throw, launcher, mounted, general, and visual settings.
+- Optional redstone automation for the Mounted Rope Launcher.
 
 ## How To Use
 
-### Throwable Rope Connector
-
 1. Craft a Throwable Rope Connector.
-2. Aim at a valid block face.
-3. Right-click to throw it.
-4. If it lands successfully, it places a Rope Connector.
-5. The item in your original slot becomes a linked Rope Coupling.
-6. Right-click a Rope Winch with that Rope Coupling to finish the connection.
-
-### Rope Connector Launcher
-
-1. Load Throwable Rope Connectors into your inventory.
-2. Hold the launcher and keep a Throwable Rope Connector in the other hand.
-3. Fire at a valid block face to place a connector at longer range.
-4. On success, the ammo becomes a linked Rope Coupling ready for the winch.
-
-### Mounted Rope Launcher
-
-1. Place the Mounted Rope Launcher.
-2. Load it with Throwable Rope Connectors.
-3. Right-click to mount it.
-4. Aim the turret and left-click to fire.
-5. Right-click while mounted to release the current rope.
-6. Sneak to dismount.
+2. Aim at a valid block face and throw it by hand, fire it from the launcher, or use the mounted launcher.
+3. If it lands successfully, it places a Rope Connector.
+4. The used connector becomes a linked Rope Coupling.
+5. Right-click a Rope Winch with that Rope Coupling to finish the connection.
 
 ## Config
 
-```toml
-[throwing]
-maxThrowDistance = 10.0
-throwVelocity = 1.5
+Throwing, launcher, mounted, general, and visual settings are configurable in the generated config file.
 
-[launcher]
-launcherMaxDistance = 20.0
-
-[mounted]
-mountedLauncherRange = 40.0
-removePlacedConnectorOnRelease = true
-
-[general]
-consumeOnSuccessOnly = true
-playParticles = true
-showFailureMessages = true
-
-[visual]
-showProjectileRopeTrail = true
-```
-
-Range values cannot exceed Create Simulated's `max_rope_range`. If they are set higher, they are corrected back down to that limit.
+Range values cannot exceed Create Simulated's `max_rope_range`.
 
 ## Requirements
 
 - Minecraft 1.21.1
-- NeoForge 21.1.227 or newer
-- Create Aeronautics bundled 1.2.1 or newer
+- NeoForge 21.1.228 or newer
+- Create Aeronautics bundled 1.3.0 or newer
 
 ## Changelog
+
+### 0.4.0
+
+### Added
+
+- Added redstone automation for the Mounted Rope Launcher using side-specific inputs.
+- Added red and orange side markers to the Mounted Rope Launcher to show the redstone fire and release sides.
+- Added config options to disable mounted launcher redstone firing and to disable remote release.
+- Added mounted launcher tooltip/help improvements, including config-aware help text and red/orange side marker guidance.
+
+### Fixed
+
+- Fixed mounted launcher compatibility with the newer Simulated rope API used by Aeronautics 1.3.x.
+- Improved mounted launcher rope trail rendering and automated shot origin visuals.
 
 ### 0.3.0
 

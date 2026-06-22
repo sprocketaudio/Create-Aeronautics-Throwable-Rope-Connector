@@ -5,6 +5,7 @@ import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.MountedRopeLauncherDismountPacket;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.MountedRopeLauncherFirePacket;
@@ -79,12 +80,19 @@ public final class MountedRopeLauncherClientInput {
 
     private static void showMountedHud(Minecraft minecraft, MountedRopeLauncherSeatEntity seat) {
         int ammoCount = 0;
+        boolean connected = false;
         if (minecraft.level != null && minecraft.level.getBlockEntity(seat.getLauncherPos()) instanceof MountedRopeLauncherBlockEntity launcher) {
             ammoCount = launcher.getAmmoCount();
+            connected = launcher.isConnected();
+        }
+
+        String translationKey = "message.create_aeronautics_throwable_rope_connector.mounted_controls";
+        if (connected && !ModCommonConfig.canMountedLauncherRemoteRelease()) {
+            translationKey = "message.create_aeronautics_throwable_rope_connector.mounted_controls_release_disabled";
         }
 
         minecraft.player.displayClientMessage(
-                Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_controls", ammoCount),
+                Component.translatable(translationKey, ammoCount),
                 true
         );
     }

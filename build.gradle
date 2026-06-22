@@ -34,12 +34,13 @@ base {
     archivesName = mod_id
 }
 
-def aeronauticsBundleJar = file("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-aeronautics-bundled-1.21.1-1.2.1.jar")
-def extractedSimulatedJar = layout.buildDirectory.file("local-mod-deps/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.2.1.jar")
+def aeronauticsBundleJar = file("libs/create-aeronautics-bundled-1.21.1-1.3.0.jar")
+def sableJar = file("libs/sable-neoforge-1.21.1-2.0.1.jar")
+def extractedSimulatedJar = layout.buildDirectory.file("local-mod-deps/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.3.0.jar")
 
 tasks.register("extractSimulatedJar", Copy) {
     from(zipTree(aeronauticsBundleJar)) {
-        include "META-INF/jarjar/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.2.1.jar"
+        include "META-INF/jarjar/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.3.0.jar"
         eachFile { details -> details.path = details.name }
         includeEmptyDirs = false
     }
@@ -118,12 +119,12 @@ dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
     compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
     compileOnly files(extractedSimulatedJar)
-    compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/sable-neoforge-1.21.1-1.2.2.jar")
+    compileOnly files(sableJar)
     compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
     compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
     localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
-    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-aeronautics-bundled-1.21.1-1.2.1.jar")
-    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/sable-neoforge-1.21.1-1.2.2.jar")
+    localRuntime files(aeronauticsBundleJar)
+    localRuntime files(sableJar)
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
