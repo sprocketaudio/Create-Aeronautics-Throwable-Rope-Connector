@@ -45,6 +45,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
 
     public void fire(ServerPlayer player) {
         if (this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
+            launcher.setAimFromWorldDirection(player.getLookAngle());
             launcher.fireFromRider(player);
         }
     }
@@ -78,7 +79,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
         entity.setYHeadRot(entity.getYRot());
         if (!this.level().isClientSide() && entity instanceof ServerPlayer player
                 && this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
-            launcher.setAim(player.getYRot(), player.getXRot());
+            launcher.setAimFromWorldDirection(player.getLookAngle());
         }
     }
 
@@ -112,7 +113,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
 
     private void fireAimUpdate(ServerPlayer player) {
         if (this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
-            launcher.setAim(player.getYRot(), player.getXRot());
+            launcher.setAimFromWorldDirection(player.getLookAngle());
         }
     }
 
@@ -126,26 +127,36 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
             return;
         }
 
+        if (!(this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher)) {
+            return;
+        }
+
+        Vec3 localLookDirection = launcher.worldDirectionToLocal(passenger.getLookAngle());
         float clampedYaw = MountedRopeLauncherBlockEntity.clampYawForFacing(
                 state.getValue(MountedRopeLauncherBlock.FACING),
-                passenger.getYRot()
+                (float) Math.toDegrees(Math.atan2(-localLookDirection.x, localLookDirection.z))
         );
-        float clampedPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(passenger.getXRot());
-        boolean yawChanged = Math.abs(net.minecraft.util.Mth.wrapDegrees(passenger.getYRot() - clampedYaw)) >= 0.1F;
-        boolean pitchChanged = Math.abs(passenger.getXRot() - clampedPitch) >= 0.1F;
+        float clampedPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(
+                (float) Math.toDegrees(Math.atan2(-localLookDirection.y, Math.sqrt(localLookDirection.x * localLookDirection.x + localLookDirection.z * localLookDirection.z)))
+        );
+        Vec3 clampedWorldDirection = launcher.localDirectionToWorld(Vec3.directionFromRotation(clampedPitch, clampedYaw));
+        float worldYaw = (float) Math.toDegrees(Math.atan2(-clampedWorldDirection.x, clampedWorldDirection.z));
+        float worldPitch = (float) Math.toDegrees(Math.atan2(-clampedWorldDirection.y, Math.sqrt(clampedWorldDirection.x * clampedWorldDirection.x + clampedWorldDirection.z * clampedWorldDirection.z)));
+        boolean yawChanged = Math.abs(net.minecraft.util.Mth.wrapDegrees(passenger.getYRot() - worldYaw)) >= 0.1F;
+        boolean pitchChanged = Math.abs(passenger.getXRot() - worldPitch) >= 0.1F;
 
         if (!yawChanged && !pitchChanged) {
             return;
         }
 
-        passenger.setYRot(clampedYaw);
-        passenger.setYHeadRot(clampedYaw);
-        passenger.setXRot(clampedPitch);
-        passenger.yRotO = clampedYaw;
-        passenger.xRotO = clampedPitch;
-        livingPassenger.setYBodyRot(clampedYaw);
-        livingPassenger.yHeadRotO = clampedYaw;
-        livingPassenger.yBodyRotO = clampedYaw;
+        passenger.setYRot(worldYaw);
+        passenger.setYHeadRot(worldYaw);
+        passenger.setXRot(worldPitch);
+        passenger.yRotO = worldYaw;
+        passenger.xRotO = worldPitch;
+        livingPassenger.setYBodyRot(worldYaw);
+        livingPassenger.yHeadRotO = worldYaw;
+        livingPassenger.yBodyRotO = worldYaw;
     }
 
     private boolean isValidLauncher() {
@@ -155,7 +166,11 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
     }
 
     private Vec3 getSeatPosition() {
-        return Vec3.atBottomCenterOf(this.launcherPos).add(0.0D, 0.4D, 0.0D);
+        Vec3 localSeatPos = Vec3.atBottomCenterOf(this.launcherPos).add(0.0D, 0.4D, 0.0D);
+        if (this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
+            return launcher.projectLocalPositionToWorld(localSeatPos);
+        }
+        return localSeatPos;
     }
 
     @Override

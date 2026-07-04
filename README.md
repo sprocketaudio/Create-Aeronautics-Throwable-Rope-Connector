@@ -42,11 +42,17 @@ Range values cannot exceed Create Simulated's `max_rope_range`.
 
 ## Changelog
 
+### 0.4.1
+
+- Added `zh_cn` localization. (LogicWheat)
+- Fixed mounted launcher redstone firing/release on sublevels.
+
 ### 0.4.0
 
 ### Added
 
 - Added redstone automation for the Mounted Rope Launcher using side-specific inputs.
+- Added hopper/pipe-style item input support for loading Throwable Rope Connectors into the Mounted Rope Launcher.
 - Added red and orange side markers to the Mounted Rope Launcher to show the redstone fire and release sides.
 - Added config options to disable mounted launcher redstone firing and to disable remote release.
 - Added mounted launcher tooltip/help improvements, including config-aware help text and red/orange side marker guidance.

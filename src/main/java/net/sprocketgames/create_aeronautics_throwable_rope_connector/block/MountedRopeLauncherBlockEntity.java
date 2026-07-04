@@ -22,7 +22,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
@@ -37,12 +40,19 @@ import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.Mo
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private static final float MIN_MOUNTED_PITCH = -30.0F;
     private static final float MAX_MOUNTED_PITCH = 30.0F;
     private static final float MAX_MOUNTED_YAW_OFFSET = 80.0F;
+    private static final float MOUNTED_FIRE_PITCH_OFFSET = 2.0F;
+    private static final float SABLE_MOUNTED_FIRE_PITCH_OFFSET = 1.5F;
+    private static final float SABLE_REDSTONE_FIRE_PITCH_OFFSET = 0.0F;
+    private static final double HEAD_PIVOT_HEIGHT = 1.0D;
+    private static final double MOUNTED_MUZZLE_DISTANCE = 13.5D / 16.0D;
+    private static final double MOUNTED_TRAIL_START_DISTANCE = 3.5D / 16.0D;
     private static final Component NO_AMMO = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_no_ammo");
     private static final Component ALREADY_CONNECTED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_already_connected");
     private static final Component BLOCKED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_blocked");
@@ -144,18 +154,27 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void fireFromRider(ServerPlayer player) {
-        float clampedPitch = clampMountedPitch(player.getXRot());
-        float clampedYaw = clampYawForFacing(this.getFacing(), player.getYRot());
-        Vec3 direction = Vec3.directionFromRotation(clampedPitch, clampedYaw).normalize();
-        Vec3 launchPos = player.getEyePosition().add(direction.scale(0.45D));
+        float clampedPitch = clampMountedPitch(this.aimPitch);
+        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, true);
+        Vec3 localLaunchPos = this.getMountedMuzzlePosition(localDirection);
+        Vec3 launchPos = this.projectPositionOutOfSubLevel(localLaunchPos);
+        Vec3 target = this.getMountedReticleTarget(player);
+        Vec3 direction = target.subtract(launchPos).normalize();
+        if (direction.lengthSqr() <= 1.0E-6D) {
+            direction = this.projectDirectionOutOfSubLevel(localDirection, localLaunchPos).normalize();
+        }
         this.fireInDirection(player, direction, launchPos, false);
     }
 
     public void fireFromSavedAim() {
         float clampedPitch = clampMountedPitch(this.aimPitch);
         float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
-        Vec3 direction = Vec3.directionFromRotation(clampedPitch, clampedYaw).normalize();
-        this.fireInDirection(null, direction, this.getRedstoneBarrelPosition(), false);
+        Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, false);
+        Vec3 localLaunchPos = this.getMountedMuzzlePosition(localDirection);
+        Vec3 launchPos = this.projectPositionOutOfSubLevel(localLaunchPos);
+        Vec3 direction = this.projectDirectionOutOfSubLevel(localDirection, localLaunchPos).normalize();
+        this.fireInDirection(null, direction, launchPos, false);
     }
 
     private void fireInDirection(@Nullable ServerPlayer player, Vec3 direction, Vec3 launchPos, boolean checkFixedFront) {
@@ -232,7 +251,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         }
 
         player.startRiding(seat, true);
-        this.setAim(player.getYRot(), player.getXRot());
+        this.setAimFromWorldDirection(player.getLookAngle());
     }
 
     @Nullable
@@ -274,6 +293,22 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         this.aimYaw = clampedYaw;
         this.aimPitch = clampedPitch;
         this.notifyUpdate();
+    }
+
+    public void setAimFromDirection(Vec3 localDirection) {
+        float clampedYaw = clampYawForFacing(this.getFacing(), yawFromDirection(localDirection));
+        float clampedPitch = clampMountedPitch(pitchFromDirection(localDirection));
+        if (Math.abs(this.aimYaw - clampedYaw) < 0.5F && Math.abs(this.aimPitch - clampedPitch) < 0.5F) {
+            return;
+        }
+
+        this.aimYaw = clampedYaw;
+        this.aimPitch = clampedPitch;
+        this.notifyUpdate();
+    }
+
+    public void setAimFromWorldDirection(Vec3 worldDirection) {
+        this.setAimFromDirection(this.worldDirectionToLocal(worldDirection));
     }
 
     public float getAimYaw() {
@@ -484,33 +519,69 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     private Vec3 getBarrelPosition() {
         Direction facing = this.getFacing();
-        return this.worldPosition.getCenter().add(
+        return this.getBaseAttachmentPoint().add(
                 facing.getStepX() * 0.8D,
-                1.35D,
+                0.85D,
                 facing.getStepZ() * 0.8D
         );
     }
 
     private Vec3 getRedstoneBarrelPosition() {
         Direction facing = this.getFacing();
-        return this.worldPosition.getCenter().add(
+        return this.getBaseAttachmentPoint().add(
                 facing.getStepX() * 0.68D,
-                0.82D,
+                0.58D,
                 facing.getStepZ() * 0.68D
         );
     }
 
     public Vec3 getAutomatedTrailStartPosition() {
-        Direction facing = this.getFacing();
-        return this.worldPosition.getCenter().add(
-                facing.getStepX() * 0.3D,
-                0.42D,
-                facing.getStepZ() * 0.3D
-        );
+        float clampedPitch = clampMountedPitch(this.aimPitch);
+        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, false);
+        Vec3 localTrailStart = this.getMountedTrailStartPosition(localDirection);
+        return this.projectPositionOutOfSubLevel(localTrailStart);
     }
 
     private Vec3 getAttachmentPoint() {
+        RopeStrandHolderBehavior localHolder = this.getBehavior();
+        if (localHolder != null) {
+            return localHolder.getAttachmentPoint();
+        }
         return this.worldPosition.getCenter();
+    }
+
+    private Vec3 getBaseAttachmentPoint() {
+        RopeStrandHolderBehavior localHolder = this.getBehavior();
+        if (localHolder != null) {
+            return localHolder.getVisualAttachmentPoint();
+        }
+        return this.worldPosition.getCenter();
+    }
+
+    private Vec3 getMountedHeadPivotPosition() {
+        return Vec3.atBottomCenterOf(this.worldPosition).add(0.0D, HEAD_PIVOT_HEIGHT, 0.0D);
+    }
+
+    private Vec3 getMountedMuzzlePosition(Vec3 localDirection) {
+        return this.getMountedHeadPivotPosition().add(localDirection.scale(MOUNTED_MUZZLE_DISTANCE));
+    }
+
+    private Vec3 getMountedTrailStartPosition(Vec3 localDirection) {
+        return this.getMountedHeadPivotPosition().add(localDirection.scale(MOUNTED_TRAIL_START_DISTANCE));
+    }
+
+    private Vec3 getMountedReticleTarget(ServerPlayer player) {
+        double range = ModCommonConfig.getClampedMountedLauncherRange();
+        Vec3 eyePos = player.getEyePosition();
+        Vec3 lookDirection = player.getLookAngle().normalize();
+        Vec3 endPos = eyePos.add(lookDirection.scale(range));
+        ClipContext clipContext = new ClipContext(eyePos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
+        BlockHitResult blockHitResult = this.level.clip(clipContext);
+        if (blockHitResult.getType() != HitResult.Type.MISS) {
+            return blockHitResult.getLocation();
+        }
+        return endPos;
     }
 
     private void message(@Nullable ServerPlayer player, Component message) {
@@ -625,5 +696,128 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to destroy rope link.", throwable);
         }
         return false;
+    }
+
+    private static float yawFromDirection(Vec3 direction) {
+        return (float) Math.toDegrees(Math.atan2(-direction.x, direction.z));
+    }
+
+    private static float pitchFromDirection(Vec3 direction) {
+        double horizontalLength = Math.sqrt(direction.x * direction.x + direction.z * direction.z);
+        return (float) Math.toDegrees(Math.atan2(-direction.y, horizontalLength));
+    }
+
+    private Vec3 getMountedLaunchDirection(float yaw, float pitch, boolean mountedManualFire) {
+        float pitchOffset = MOUNTED_FIRE_PITCH_OFFSET;
+        if (this.getContainingSubLevelPose() != null) {
+            pitchOffset += mountedManualFire ? SABLE_MOUNTED_FIRE_PITCH_OFFSET : SABLE_REDSTONE_FIRE_PITCH_OFFSET;
+        }
+        return Vec3.directionFromRotation(pitch - pitchOffset, yaw).normalize();
+    }
+
+    private Vec3 projectPositionOutOfSubLevel(Vec3 localPosition) {
+        Level currentLevel = this.level;
+        if (currentLevel == null) {
+            return localPosition;
+        }
+
+        try {
+            Class<?> sableClass = Class.forName("dev.ryanhcode.sable.Sable");
+            Field helperField = sableClass.getField("HELPER");
+            Object helper = helperField.get(null);
+            Method projectOutMethod = helper.getClass().getMethod("projectOutOfSubLevel", Level.class, Vec3.class);
+            Object projected = projectOutMethod.invoke(helper, currentLevel, localPosition);
+            if (projected instanceof Vec3 vec3) {
+                return vec3;
+            }
+        } catch (ReflectiveOperationException ignored) {
+        } catch (Throwable throwable) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.debug("Failed to project Mounted Rope Launcher position out of sublevel.", throwable);
+        }
+
+        return localPosition;
+    }
+
+    public Vec3 projectLocalPositionToWorld(Vec3 localPosition) {
+        return this.projectPositionOutOfSubLevel(localPosition);
+    }
+
+    private Vec3 projectDirectionOutOfSubLevel(Vec3 localDirection, Vec3 localOrigin) {
+        Object pose = this.getContainingSubLevelPose();
+        if (pose != null) {
+            try {
+                Method transformNormal = pose.getClass().getMethod("transformNormal", Vec3.class);
+                Object worldDirection = transformNormal.invoke(pose, localDirection);
+                if (worldDirection instanceof Vec3 vec3) {
+                    return vec3.lengthSqr() > 1.0E-6D ? vec3.normalize() : localDirection;
+                }
+            } catch (ReflectiveOperationException ignored) {
+            } catch (Throwable throwable) {
+                CreateAeronauticsThrowableRopeConnector.LOGGER.debug("Failed to project Mounted Rope Launcher direction out of sublevel.", throwable);
+            }
+        }
+
+        Vec3 worldOrigin = this.projectPositionOutOfSubLevel(localOrigin);
+        Vec3 worldAhead = this.projectPositionOutOfSubLevel(localOrigin.add(localDirection));
+        Vec3 projectedDirection = worldAhead.subtract(worldOrigin);
+        return projectedDirection.lengthSqr() > 1.0E-6D ? projectedDirection.normalize() : localDirection;
+    }
+
+    public Vec3 worldDirectionToLocal(Vec3 worldDirection) {
+        Object pose = this.getContainingSubLevelPose();
+        if (pose != null) {
+            try {
+                Method transformNormal = pose.getClass().getMethod("transformNormal", Vec3.class);
+                Vec3 localXWorld = (Vec3) transformNormal.invoke(pose, new Vec3(1.0D, 0.0D, 0.0D));
+                Vec3 localYWorld = (Vec3) transformNormal.invoke(pose, new Vec3(0.0D, 1.0D, 0.0D));
+                Vec3 localZWorld = (Vec3) transformNormal.invoke(pose, new Vec3(0.0D, 0.0D, 1.0D));
+                Vec3 normalizedWorldDirection = worldDirection.normalize();
+                Vec3 localDirection = new Vec3(
+                        normalizedWorldDirection.dot(localXWorld),
+                        normalizedWorldDirection.dot(localYWorld),
+                        normalizedWorldDirection.dot(localZWorld)
+                );
+                if (localDirection.lengthSqr() > 1.0E-6D) {
+                    return localDirection.normalize();
+                }
+            } catch (ReflectiveOperationException ignored) {
+            } catch (Throwable throwable) {
+                CreateAeronauticsThrowableRopeConnector.LOGGER.debug("Failed to convert world direction into Mounted Rope Launcher local direction.", throwable);
+            }
+        }
+
+        return worldDirection.normalize();
+    }
+
+    public Vec3 localDirectionToWorld(Vec3 localDirection) {
+        return this.projectDirectionOutOfSubLevel(localDirection, this.getMountedHeadPivotPosition()).normalize();
+    }
+
+
+    @Nullable
+    private Object getContainingSubLevelPose() {
+        Level currentLevel = this.level;
+        if (currentLevel == null) {
+            return null;
+        }
+
+        try {
+            Class<?> sableClass = Class.forName("dev.ryanhcode.sable.Sable");
+            Field helperField = sableClass.getField("HELPER");
+            Object helper = helperField.get(null);
+            Method getContaining = helper.getClass().getMethod("getContaining", net.minecraft.world.level.block.entity.BlockEntity.class);
+            Object subLevel = getContaining.invoke(helper, this);
+            if (subLevel == null) {
+                return null;
+            }
+
+            Method logicalPose = subLevel.getClass().getMethod("logicalPose");
+            return logicalPose.invoke(subLevel);
+        } catch (ReflectiveOperationException ignored) {
+        } catch (Throwable throwable) {
+            CreateAeronauticsThrowableRopeConnector.LOGGER.debug("Failed to resolve Mounted Rope Launcher sublevel pose.", throwable);
+        }
+
+        return null;
     }
 }

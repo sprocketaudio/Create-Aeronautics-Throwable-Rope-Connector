@@ -17,6 +17,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
@@ -71,11 +72,18 @@ public final class MountedRopeLauncherRenderer extends RopeWinchRenderer {
         if (localPlayer != null
                 && localPlayer.getVehicle() instanceof MountedRopeLauncherSeatEntity seat
                 && blockEntity.getBlockPos().equals(seat.getLauncherPos())) {
+            Vec3 worldLookDirection = localPlayer.getViewVector(partialTicks);
+            Vec3 localLookDirection = blockEntity.worldDirectionToLocal(worldLookDirection);
             aimYaw = MountedRopeLauncherBlockEntity.clampYawForFacing(
                     state.getValue(net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlock.FACING),
-                    localPlayer.getViewYRot(partialTicks)
+                    (float) Math.toDegrees(Math.atan2(-localLookDirection.x, localLookDirection.z))
             );
-            aimPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(localPlayer.getViewXRot(partialTicks));
+            aimPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(
+                    (float) Math.toDegrees(Math.atan2(
+                            -localLookDirection.y,
+                            Math.sqrt(localLookDirection.x * localLookDirection.x + localLookDirection.z * localLookDirection.z)
+                    ))
+            );
         }
 
         float yaw = Mth.wrapDegrees(180.0F - aimYaw);

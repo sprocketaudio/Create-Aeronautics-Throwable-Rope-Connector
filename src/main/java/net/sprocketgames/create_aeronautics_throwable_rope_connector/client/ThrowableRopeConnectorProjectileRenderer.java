@@ -75,7 +75,9 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
 
         Entity owner = entity.getOwner();
         Vec3 handPos;
-        if (owner instanceof Player player) {
+        if (entity.isTrailFromMountedLauncher()) {
+            handPos = this.getMountedLauncherTrailStartPos(entity);
+        } else if (owner instanceof Player player) {
             handPos = this.getTrailStartPos(
                     player,
                     entity.isTrailFromOffhand(),
@@ -83,8 +85,6 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
                     entity.isTrailFromMountedLauncher(),
                     partialTicks
             );
-        } else if (entity.isTrailFromMountedLauncher()) {
-            handPos = this.getMountedLauncherTrailStartPos(entity);
         } else {
             return;
         }
