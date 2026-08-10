@@ -110,6 +110,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private boolean pendingAmmoConsumed;
     private boolean fireRedstonePowered;
     private boolean releaseRedstonePowered;
+    private boolean brokenCleanupDone;
 
     public MountedRopeLauncherBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
@@ -159,10 +160,15 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, true);
         Vec3 localLaunchPos = this.getMountedMuzzlePosition(localDirection);
         Vec3 launchPos = this.projectPositionOutOfSubLevel(localLaunchPos);
-        Vec3 target = this.getMountedReticleTarget(player);
-        Vec3 direction = target.subtract(launchPos).normalize();
-        if (direction.lengthSqr() <= 1.0E-6D) {
+        Vec3 direction;
+        if (this.getContainingSubLevelPose() != null) {
             direction = this.projectDirectionOutOfSubLevel(localDirection, localLaunchPos).normalize();
+        } else {
+            Vec3 target = this.getMountedReticleTarget(player);
+            direction = target.subtract(launchPos).normalize();
+            if (direction.lengthSqr() <= 1.0E-6D) {
+                direction = this.projectDirectionOutOfSubLevel(localDirection, localLaunchPos).normalize();
+            }
         }
         this.fireInDirection(player, direction, launchPos, false);
     }
@@ -378,13 +384,18 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void onBroken() {
+        if (this.brokenCleanupDone) {
+            return;
+        }
+        this.brokenCleanupDone = true;
         this.release(null);
         if (this.level != null) {
-            ItemStack ammo = this.inventory.getStackInSlot(0);
+            ItemStack ammo = this.inventory.extractItem(0, this.inventory.getSlotLimit(0), false);
             if (!ammo.isEmpty()) {
-                Containers.dropItemStack(this.level, this.worldPosition.getX() + 0.5D, this.worldPosition.getY() + 0.5D, this.worldPosition.getZ() + 0.5D, ammo.copy());
+                Containers.dropItemStack(this.level, this.worldPosition.getX() + 0.5D, this.worldPosition.getY() + 0.5D, this.worldPosition.getZ() + 0.5D, ammo);
             }
         }
+        this.setChanged();
     }
 
     public boolean isConnected() {
@@ -576,8 +587,9 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         Vec3 eyePos = player.getEyePosition();
         Vec3 lookDirection = player.getLookAngle().normalize();
         Vec3 endPos = eyePos.add(lookDirection.scale(range));
+        Level raycastLevel = player.level();
         ClipContext clipContext = new ClipContext(eyePos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
-        BlockHitResult blockHitResult = this.level.clip(clipContext);
+        BlockHitResult blockHitResult = raycastLevel.clip(clipContext);
         if (blockHitResult.getType() != HitResult.Type.MISS) {
             return blockHitResult.getLocation();
         }
