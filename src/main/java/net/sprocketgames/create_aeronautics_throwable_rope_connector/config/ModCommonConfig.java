@@ -8,11 +8,6 @@ public final class ModCommonConfig {
     public static final int DEFAULT_COOLDOWN_TICKS = 10;
     public static final double DEFAULT_PROJECTILE_ROPE_TRAIL_WIDTH = 0.1875D;
 
-    public enum MountedAnchorReleaseMode {
-        REMOVE,
-        DISABLED
-    }
-
     static {
         BUILDER.push("throwing");
         MAX_THROW_DISTANCE = BUILDER
@@ -52,19 +47,12 @@ public final class ModCommonConfig {
                 .comment("Allow a rising redstone pulse to fire the Mounted Rope Launcher using its last saved aim.")
                 .define("mountedRedstoneFire", true);
 
-        MOUNTED_ANCHOR_RELEASE_MODE = BUILDER
-                .comment(
-                        "Controls whether the Mounted Rope Launcher can remotely release anchors it placed.",
-                        "REMOVE: release the rope and remove the placed connector with no refund.",
-                        "DISABLED: remote release does nothing; players must go recover the connector manually."
-                )
-                .defineEnum("mountedAnchorReleaseMode", MountedAnchorReleaseMode.REMOVE);
         BUILDER.pop();
 
         BUILDER.push("general");
         CONSUME_ON_SUCCESS_ONLY = BUILDER
                 .comment(
-                        "If true, throwable connector ammo is only consumed after a successful attachment.",
+                        "If true, ammunition is only consumed after a successful shot.",
                         "This applies to hand throws, the handheld launcher, and the mounted launcher."
                 )
                 .define("consumeOnSuccessOnly", true);
@@ -95,30 +83,25 @@ public final class ModCommonConfig {
     public static final ModConfigSpec.BooleanValue SHOW_PROJECTILE_ROPE_TRAIL;
     public static final ModConfigSpec.DoubleValue MOUNTED_LAUNCHER_RANGE;
     public static final ModConfigSpec.BooleanValue MOUNTED_REDSTONE_FIRE;
-    public static final ModConfigSpec.EnumValue<MountedAnchorReleaseMode> MOUNTED_ANCHOR_RELEASE_MODE;
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private ModCommonConfig() {
     }
 
     public static double getClampedThrowDistance() {
-        return MAX_THROW_DISTANCE.get();
+        return clampToSimulatedMax(MAX_THROW_DISTANCE.get());
     }
 
     public static double getClampedLauncherMaxDistance() {
-        return LAUNCHER_MAX_DISTANCE.get();
+        return clampToSimulatedMax(LAUNCHER_MAX_DISTANCE.get());
     }
 
     public static double getClampedMountedLauncherRange() {
-        return MOUNTED_LAUNCHER_RANGE.get();
+        return clampToSimulatedMax(MOUNTED_LAUNCHER_RANGE.get());
     }
 
     public static boolean canMountedLauncherFireFromRedstone() {
         return MOUNTED_REDSTONE_FIRE.get();
-    }
-
-    public static boolean canMountedLauncherRemoteRelease() {
-        return MOUNTED_ANCHOR_RELEASE_MODE.get() == MountedAnchorReleaseMode.REMOVE;
     }
 
     public static double getSimulatedMaxRopeRange() {

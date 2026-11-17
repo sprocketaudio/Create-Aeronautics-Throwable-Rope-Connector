@@ -9,10 +9,12 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
+import net.neoforged.neoforge.common.NeoForge;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.client.CreateAeronauticsThrowableRopeConnectorClient;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.ModNetworking;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.RopeConnectorLauncherItem;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlockEntityTypes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlocks;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModCreativeTabs;
@@ -35,6 +37,7 @@ public final class CreateAeronauticsThrowableRopeConnector {
         modEventBus.addListener(this::registerCapabilities);
         modEventBus.addListener(this::onConfigLoaded);
         modEventBus.addListener(this::onConfigReloaded);
+        NeoForge.EVENT_BUS.addListener(RopeConnectorLauncherItem::skipCouplingUseWhenAimingLauncher);
         modContainer.registerConfig(ModConfig.Type.COMMON, ModCommonConfig.SPEC);
         if (FMLEnvironment.dist == Dist.CLIENT) {
             CreateAeronauticsThrowableRopeConnectorClient.init(modEventBus, modContainer);

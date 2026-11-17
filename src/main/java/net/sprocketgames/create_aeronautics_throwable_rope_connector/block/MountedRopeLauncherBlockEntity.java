@@ -1,6 +1,7 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector.block;
 
 import dev.simulated_team.simulated.content.blocks.rope.RopeStrandHolderBehavior;
+import dev.ryanhcode.sable.Sable;
 import dev.simulated_team.simulated.content.blocks.rope.rope_winch.RopeWinchBlockEntity;
 import dev.simulated_team.simulated.content.items.rope.RopeItem.RopeItem;
 import net.minecraft.core.BlockPos;
@@ -36,12 +37,15 @@ import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModC
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.ThrowableRopeConnectorPlacement;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.AnchorProtection;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlockEntityTypes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.UUID;
 
 public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private static final float MIN_MOUNTED_PITCH = -30.0F;
@@ -58,17 +62,17 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     private static final Component BLOCKED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_blocked");
     private static final Component ANCHOR_CONNECTED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_anchor_connected");
     private static final Component ANCHOR_FAILED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_anchor_failed");
-    private static final Component RELEASE_DISABLED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_release_disabled");
+    private static final Component REMOVE_DENIED = Component.translatable("message.create_aeronautics_throwable_rope_connector.mounted_remove_denied");
 
     private final ItemStackHandler inventory = new ItemStackHandler(1) {
         @Override
         public boolean isItemValid(int slot, ItemStack stack) {
-            return stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get());
+            return CreateSimulatedIntegration.isLauncherAmmo(stack);
         }
 
         @Override
         protected void onContentsChanged(int slot) {
-            setChanged();
+            notifyUpdate();
         }
     };
     private final IItemHandler automationInventory = new IItemHandler() {
@@ -103,11 +107,12 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         }
     };
 
-    private BlockPos remoteConnectorPos;
     private float aimYaw;
     private float aimPitch;
     private long nextFireGameTime;
-    private boolean pendingAmmoConsumed;
+    private UUID pendingShot;
+    private ItemStack paidAmmo = ItemStack.EMPTY;
+    private long pendingShotExpires;
     private boolean fireRedstonePowered;
     private boolean releaseRedstonePowered;
     private boolean brokenCleanupDone;
@@ -155,6 +160,17 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void fireFromRider(ServerPlayer player) {
+        if (CreateSimulatedIntegration.isRopeCoupling(this.inventory.getStackInSlot(0))) {
+            Vec3 localLook = this.worldDirectionToLocal(player.getLookAngle());
+            float yaw = clampYawForFacing(this.getFacing(), yawFromDirection(localLook));
+            float pitch = clampMountedPitch(pitchFromDirection(localLook));
+            Vec3 direction = this.localDirectionToWorld(Vec3.directionFromRotation(pitch, yaw));
+            Vec3 eye = Sable.HELPER.projectOutOfSubLevel(player.level(), player.getEyePosition());
+            // Use the rider's sight line for precise coupling shots. The rope trail still starts at the barrel.
+            this.fireInDirection(player, direction, eye, false);
+            return;
+        }
+
         float clampedPitch = clampMountedPitch(this.aimPitch);
         float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
         Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, true);
@@ -188,7 +204,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return;
         }
 
-        if (serverLevel.getGameTime() < this.nextFireGameTime) {
+        if (serverLevel.getGameTime() < this.nextFireGameTime || this.pendingShot != null) {
             return;
         }
 
@@ -197,45 +213,43 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return;
         }
 
-        if (this.inventory.getStackInSlot(0).isEmpty()) {
+        ItemStack ammo = this.inventory.getStackInSlot(0).copyWithCount(1);
+        if (!CreateSimulatedIntegration.isLauncherAmmo(ammo)) {
             this.message(player, NO_AMMO);
             return;
         }
 
-        boolean consumeOnSuccessOnly = ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get();
-        if (!consumeOnSuccessOnly) {
-            if (this.inventory.extractItem(0, 1, false).isEmpty()) {
-                this.message(player, NO_AMMO);
-                return;
-            }
-            this.pendingAmmoConsumed = true;
-        }
-
         BlockPos front = this.worldPosition.above().relative(this.getFacing());
         if (checkFixedFront && !serverLevel.getBlockState(front).getCollisionShape(serverLevel, front).isEmpty()) {
-            if (!consumeOnSuccessOnly) {
-                this.refundPendingAmmo();
-            }
             this.message(player, BLOCKED);
             serverLevel.playSound(null, this.worldPosition, SoundEvents.DISPENSER_FAIL, SoundSource.BLOCKS, 0.5F, 1.0F);
             return;
         }
 
+        double range = ModCommonConfig.getClampedMountedLauncherRange();
         ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(
                 serverLevel,
                 launchPos.x,
                 launchPos.y,
                 launchPos.z,
-                ModCommonConfig.getClampedMountedLauncherRange()
+                range
         );
-        projectile.setMountedSource(this.worldPosition);
+        projectile.setMountedSource(this.worldPosition, player != null);
         if (player != null) {
             projectile.setOwner(player);
         }
         projectile.setTrailFromMountedLauncher(true);
-        projectile.setItem(new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()));
+        projectile.setItem(ammo);
+        projectile.setNoGravity(CreateSimulatedIntegration.isRopeCoupling(ammo));
         projectile.setDeltaMovement(direction.normalize().scale(3.0D));
-        serverLevel.addFreshEntity(projectile);
+        if (!serverLevel.addFreshEntity(projectile)) {
+            return;
+        }
+        this.pendingShot = projectile.getUUID();
+        this.pendingShotExpires = serverLevel.getGameTime() + Math.max(100L, Math.round(range * 3.0D));
+        if (!ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get()) {
+            this.paidAmmo = this.inventory.extractItem(0, 1, false);
+        }
         serverLevel.playSound(null, this.worldPosition, SoundEvents.CROSSBOW_SHOOT, SoundSource.BLOCKS, 0.8F, 0.8F);
         this.nextFireGameTime = serverLevel.getGameTime() + Math.max(2, ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
         this.setChanged();
@@ -325,17 +339,20 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         return this.aimPitch;
     }
 
-    public boolean connectToPlacedConnector(ServerLevel level, BlockPos connectorPos, @Nullable ServerPlayer player) {
-        RopeStrandHolderBehavior localHolder = this.getBehavior();
-        RopeStrandHolderBehavior remoteHolder = RopeItem.getRopeHolder(level, connectorPos);
-        if (remoteHolder == null || remoteHolder.isAttached() || localHolder == null || localHolder.isAttached()) {
-            this.message(player, ANCHOR_FAILED);
+    public boolean canFinishShot(UUID shot, ItemStack ammo) {
+        if (!shot.equals(this.pendingShot)) {
             return false;
         }
+        ItemStack available = this.paidAmmo.isEmpty() ? this.inventory.getStackInSlot(0) : this.paidAmmo;
+        return ItemStack.isSameItemSameComponents(available, ammo);
+    }
 
-        boolean consumeOnSuccessOnly = ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get();
-        if (consumeOnSuccessOnly && this.inventory.extractItem(0, 1, true).isEmpty()) {
-            this.message(player, NO_AMMO);
+    public boolean connectToConnector(ServerLevel level, BlockPos connectorPos, UUID shot, ItemStack ammo, @Nullable ServerPlayer player) {
+        RopeStrandHolderBehavior localHolder = this.getBehavior();
+        RopeStrandHolderBehavior remoteHolder = RopeItem.getRopeHolder(level, connectorPos);
+        if (!this.canFinishShot(shot, ammo) || remoteHolder == null || remoteHolder.isAttached()
+                || localHolder == null || localHolder.isAttached()) {
+            this.message(player, ANCHOR_FAILED);
             return false;
         }
 
@@ -344,43 +361,82 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return false;
         }
 
-        if (consumeOnSuccessOnly) {
+        if (this.paidAmmo.isEmpty()) {
             this.inventory.extractItem(0, 1, false);
-        } else {
-            this.pendingAmmoConsumed = false;
         }
-        this.remoteConnectorPos = connectorPos.immutable();
+        this.paidAmmo = ItemStack.EMPTY;
+        this.pendingShot = null;
         this.message(player, ANCHOR_CONNECTED);
-        this.setChanged();
+        this.notifyUpdate();
         return true;
     }
 
-    public void onProjectileFailed() {
-        this.refundPendingAmmo();
-        this.setChanged();
+    public void onProjectileFailed(UUID shot) {
+        if (shot.equals(this.pendingShot)) {
+            this.refundPendingAmmo();
+        }
     }
 
-    public void release(@Nullable ServerPlayer player) {
+    @Override
+    public void tick() {
+        super.tick();
+        if (this.level instanceof ServerLevel level
+                && (this.pendingShot != null || !this.paidAmmo.isEmpty())
+                && level.getGameTime() >= this.pendingShotExpires) {
+            this.refundPendingAmmo();
+        }
+    }
+
+    public boolean disconnectRope() {
+        if (!(this.level instanceof ServerLevel level) || !this.isConnected()) {
+            return false;
+        }
+        RopeStrandHolderBehavior holder = this.getBehavior();
+        if (!holder.ownsRope()) {
+            BlockPos destination = this.getRopeDestination();
+            if (destination == null || !level.hasChunkAt(destination)) {
+                return false;
+            }
+            holder = RopeItem.getRopeHolder(level, destination);
+            if (holder == null || !holder.ownsRope()) {
+                return false;
+            }
+        }
+        holder.destroyRope(null, this.getAttachmentPoint(), false);
+        this.notifyUpdate();
+        return !this.isConnected();
+    }
+
+    public void removeAnchor(ServerPlayer player) {
         if (!(this.level instanceof ServerLevel level)) {
             return;
         }
+        BlockPos destination = this.getRopeDestination();
+        if (destination == null) {
+            return;
+        }
+        if (!AnchorProtection.canRemove(level, destination, player)) {
+            this.message(player, REMOVE_DENIED);
+            return;
+        }
+        if (this.disconnectRope() && CreateSimulatedIntegration.canUseDockConnector(level, destination)) {
+            level.removeBlock(destination, false);
+        }
+    }
 
-        RopeStrandHolderBehavior localHolder = this.getBehavior();
-        boolean ropeReleased = true;
-        if (localHolder != null && localHolder.isAttached()) {
-            ServerPlayer releasePlayer = player != null ? player : this.findAutomationReleasePlayer(level);
-            ropeReleased = this.tryDestroyRopeCompat(localHolder, releasePlayer, this.getAttachmentPoint());
-            if (!ropeReleased) {
-                return;
+    @Nullable
+    private BlockPos getRopeDestination() {
+        RopeStrandHolderBehavior holder = this.getBehavior();
+        var strand = holder == null ? null : holder.getAttachedStrand();
+        if (strand != null) {
+            for (var attachment : strand.getAttachments()) {
+                BlockPos pos = attachment.blockAttachment();
+                if (!pos.equals(this.worldPosition)) {
+                    return pos;
+                }
             }
         }
-
-        if (this.remoteConnectorPos != null && ModCommonConfig.canMountedLauncherRemoteRelease()) {
-            level.removeBlock(this.remoteConnectorPos, false);
-        }
-
-        this.remoteConnectorPos = null;
-        this.setChanged();
+        return null;
     }
 
     public void onBroken() {
@@ -388,7 +444,8 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return;
         }
         this.brokenCleanupDone = true;
-        this.release(null);
+        this.disconnectRope();
+        this.refundPendingAmmo();
         if (this.level != null) {
             ItemStack ammo = this.inventory.extractItem(0, this.inventory.getSlotLimit(0), false);
             if (!ammo.isEmpty()) {
@@ -405,6 +462,10 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     public int getAmmoCount() {
         return this.inventory.getStackInSlot(0).getCount();
+    }
+
+    public ItemStack getLoadedAmmo() {
+        return this.inventory.getStackInSlot(0).copy();
     }
 
     public IItemHandler getAutomationInventory() {
@@ -434,44 +495,21 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void handleRedstoneSignal(boolean firePowered, boolean releasePowered) {
-        if (!ModCommonConfig.canMountedLauncherFireFromRedstone()) {
-            this.fireRedstonePowered = firePowered;
-            this.releaseRedstonePowered = releasePowered;
-            return;
-        }
-
         boolean fireRisingEdge = firePowered && !this.fireRedstonePowered;
         boolean releaseRisingEdge = releasePowered && !this.releaseRedstonePowered;
+        if (this.fireRedstonePowered != firePowered || this.releaseRedstonePowered != releasePowered) {
+            this.setChanged();
+        }
         this.fireRedstonePowered = firePowered;
         this.releaseRedstonePowered = releasePowered;
 
-        if (fireRisingEdge) {
+        if (fireRisingEdge && ModCommonConfig.canMountedLauncherFireFromRedstone()) {
             this.fireFromSavedAim();
         }
 
         if (releaseRisingEdge) {
-            this.tryRemoteRelease(null, false);
+            this.disconnectRope();
         }
-    }
-
-    public boolean tryRemoteRelease(@Nullable ServerPlayer player) {
-        return this.tryRemoteRelease(player, true);
-    }
-
-    public boolean tryRemoteRelease(@Nullable ServerPlayer player, boolean showDisabledMessage) {
-        if (!this.isConnected()) {
-            return false;
-        }
-
-        if (this.remoteConnectorPos != null && !ModCommonConfig.canMountedLauncherRemoteRelease()) {
-            if (showDisabledMessage) {
-                this.message(player, RELEASE_DISABLED);
-            }
-            return false;
-        }
-
-        this.release(player);
-        return true;
     }
 
     @Override
@@ -480,11 +518,14 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         tag.put("Inventory", this.inventory.serializeNBT(registries));
         tag.putFloat("AimYaw", this.aimYaw);
         tag.putFloat("AimPitch", this.aimPitch);
-        tag.putBoolean("PendingAmmoConsumed", this.pendingAmmoConsumed);
         tag.putBoolean("FireRedstonePowered", this.fireRedstonePowered);
         tag.putBoolean("ReleaseRedstonePowered", this.releaseRedstonePowered);
-        if (this.remoteConnectorPos != null) {
-            tag.putLong("RemoteConnectorPos", this.remoteConnectorPos.asLong());
+        if (this.pendingShot != null) {
+            tag.putUUID("PendingShot", this.pendingShot);
+            tag.putLong("PendingShotExpires", this.pendingShotExpires);
+        }
+        if (!this.paidAmmo.isEmpty()) {
+            tag.put("PaidAmmo", this.paidAmmo.save(registries));
         }
     }
 
@@ -494,10 +535,14 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         this.inventory.deserializeNBT(registries, tag.getCompound("Inventory"));
         this.aimYaw = tag.getFloat("AimYaw");
         this.aimPitch = tag.getFloat("AimPitch");
-        this.pendingAmmoConsumed = tag.getBoolean("PendingAmmoConsumed");
+        this.pendingShot = tag.hasUUID("PendingShot") ? tag.getUUID("PendingShot") : null;
+        this.pendingShotExpires = tag.getLong("PendingShotExpires");
+        this.paidAmmo = ItemStack.parseOptional(registries, tag.getCompound("PaidAmmo"));
+        if (this.paidAmmo.isEmpty() && tag.getBoolean("PendingAmmoConsumed")) {
+            this.paidAmmo = new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get());
+        }
         this.fireRedstonePowered = tag.getBoolean("FireRedstonePowered");
         this.releaseRedstonePowered = tag.getBoolean("ReleaseRedstonePowered");
-        this.remoteConnectorPos = tag.contains("RemoteConnectorPos") ? BlockPos.of(tag.getLong("RemoteConnectorPos")) : null;
     }
 
     @Override
@@ -591,7 +636,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         ClipContext clipContext = new ClipContext(eyePos, endPos, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
         BlockHitResult blockHitResult = raycastLevel.clip(clipContext);
         if (blockHitResult.getType() != HitResult.Type.MISS) {
-            return blockHitResult.getLocation();
+            return Sable.HELPER.projectOutOfSubLevel(raycastLevel, blockHitResult.getLocation());
         }
         return endPos;
     }
@@ -610,20 +655,17 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     private void refundPendingAmmo() {
-        if (!this.pendingAmmoConsumed || this.level == null) {
+        this.pendingShot = null;
+        if (this.level == null) {
             return;
         }
-
-        ItemStack remainder = this.inventory.insertItem(0, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()), false);
+        ItemStack ammo = this.paidAmmo;
+        this.paidAmmo = ItemStack.EMPTY;
+        ItemStack remainder = this.inventory.insertItem(0, ammo, false);
         if (!remainder.isEmpty()) {
             Containers.dropItemStack(this.level, this.worldPosition.getX() + 0.5D, this.worldPosition.getY() + 0.5D, this.worldPosition.getZ() + 0.5D, remainder);
         }
-        this.pendingAmmoConsumed = false;
-    }
-
-    @Nullable
-    private ServerPlayer findAutomationReleasePlayer(ServerLevel level) {
-        return level.players().isEmpty() ? null : level.players().getFirst();
+        this.setChanged();
     }
 
     private boolean tryCreateRopeCompat(RopeStrandHolderBehavior localHolder, RopeStrandHolderBehavior remoteHolder) {
@@ -685,29 +727,6 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to create rope link.", throwable);
             return false;
         }
-    }
-
-    private boolean tryDestroyRopeCompat(RopeStrandHolderBehavior localHolder, @Nullable ServerPlayer player, Vec3 attachmentPoint) {
-        try {
-            Method threeArgMethod = localHolder.getClass().getMethod("destroyRope", ServerPlayer.class, Vec3.class, boolean.class);
-            threeArgMethod.invoke(localHolder, player, attachmentPoint, false);
-            return !localHolder.isAttached();
-        } catch (ReflectiveOperationException ignored) {
-        } catch (Throwable throwable) {
-            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to destroy rope link via three-arg Simulated API.", throwable);
-            return false;
-        }
-
-        try {
-            Method twoArgMethod = localHolder.getClass().getMethod("destroyRope", ServerPlayer.class, Vec3.class);
-            twoArgMethod.invoke(localHolder, player, attachmentPoint);
-            return !localHolder.isAttached();
-        } catch (ReflectiveOperationException reflectiveOperationException) {
-            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Could not find a compatible Simulated destroyRope method for Mounted Rope Launcher.", reflectiveOperationException);
-        } catch (Throwable throwable) {
-            CreateAeronauticsThrowableRopeConnector.LOGGER.error("Mounted Rope Launcher failed to destroy rope link.", throwable);
-        }
-        return false;
     }
 
     private static float yawFromDirection(Vec3 direction) {

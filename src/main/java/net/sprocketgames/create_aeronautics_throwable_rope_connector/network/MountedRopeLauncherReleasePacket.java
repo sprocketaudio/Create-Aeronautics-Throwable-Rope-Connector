@@ -7,7 +7,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 
-public record MountedRopeLauncherReleasePacket(int seatEntityId) implements CustomPacketPayload {
+public record MountedRopeLauncherReleasePacket(int seatEntityId, boolean removeAnchor) implements CustomPacketPayload {
     public static final Type<MountedRopeLauncherReleasePacket> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(
             CreateAeronauticsThrowableRopeConnector.MOD_ID,
             "mounted_rope_launcher_release"
@@ -15,6 +15,7 @@ public record MountedRopeLauncherReleasePacket(int seatEntityId) implements Cust
 
     public static final StreamCodec<RegistryFriendlyByteBuf, MountedRopeLauncherReleasePacket> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.INT, MountedRopeLauncherReleasePacket::seatEntityId,
+            ByteBufCodecs.BOOL, MountedRopeLauncherReleasePacket::removeAnchor,
             MountedRopeLauncherReleasePacket::new
     );
 

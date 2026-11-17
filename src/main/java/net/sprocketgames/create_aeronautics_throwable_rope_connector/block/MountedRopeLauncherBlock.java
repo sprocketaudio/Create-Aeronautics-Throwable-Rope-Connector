@@ -11,6 +11,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -27,7 +28,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.phys.BlockHitResult;
 import dev.simulated_team.simulated.index.SimBlockShapes;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlockEntityTypes;
-import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
 import org.jetbrains.annotations.Nullable;
 
 public final class MountedRopeLauncherBlock extends RopeWinchBlock {
@@ -109,20 +110,29 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
         BlockPos basePos = this.getBasePos(state, pos);
+        InteractionHand couplingHand = CreateSimulatedIntegration.isPreparedRopeCoupling(stack) ? hand : InteractionHand.OFF_HAND;
+        ItemStack coupling = player.getItemInHand(couplingHand);
+        if (CreateSimulatedIntegration.isPreparedRopeCoupling(coupling)) {
+            InteractionResult result = coupling.useOn(new UseOnContext(player, couplingHand, hitResult.withPosition(basePos)));
+            if (result.consumesAction()) {
+                return ItemInteractionResult.sidedSuccess(level.isClientSide());
+            }
+            return result == InteractionResult.FAIL ? ItemInteractionResult.FAIL : ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
         if (!level.isClientSide()) {
             MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
             ServerPlayer serverPlayer = player instanceof ServerPlayer sp ? sp : null;
             if (blockEntity != null && serverPlayer != null) {
                 if (stack.isEmpty() && player.isCrouching()) {
                     if (blockEntity.isConnected()) {
-                        blockEntity.tryRemoteRelease(serverPlayer);
+                        blockEntity.disconnectRope();
                     } else {
                         blockEntity.unloadAmmo(player);
                     }
                     return ItemInteractionResult.SUCCESS;
                 }
 
-                if (stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
+                if (CreateSimulatedIntegration.isLauncherAmmo(stack)) {
                     blockEntity.loadAmmo(serverPlayer, hand);
                     return ItemInteractionResult.SUCCESS;
                 }
@@ -130,10 +140,6 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
                 blockEntity.mount(serverPlayer);
                 return ItemInteractionResult.SUCCESS;
             }
-        }
-
-        if (stack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
-            return ItemInteractionResult.sidedSuccess(level.isClientSide());
         }
 
         return ItemInteractionResult.sidedSuccess(level.isClientSide());
@@ -149,7 +155,7 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
                 if (player.isCrouching()) {
                     if (serverPlayer != null) {
                         if (blockEntity.isConnected()) {
-                            blockEntity.tryRemoteRelease(serverPlayer);
+                            blockEntity.disconnectRope();
                         } else {
                             blockEntity.unloadAmmo(player);
                         }

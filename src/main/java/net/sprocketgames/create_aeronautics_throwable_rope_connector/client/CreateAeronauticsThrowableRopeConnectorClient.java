@@ -33,6 +33,7 @@ public final class CreateAeronauticsThrowableRopeConnectorClient {
         modEventBus.addListener(this::registerEntityRenderers);
         modEventBus.addListener(this::registerAdditionalModels);
         NeoForge.EVENT_BUS.addListener(this::onClientTick);
+        NeoForge.EVENT_BUS.addListener(MountedRopeLauncherClientInput::onClientTick);
         NeoForge.EVENT_BUS.addListener(MountedRopeLauncherClientInput::onInteractionKey);
         LAUNCHER_RENDER_HANDLER.registerListeners(NeoForge.EVENT_BUS);
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
@@ -51,6 +52,6 @@ public final class CreateAeronauticsThrowableRopeConnectorClient {
 
     private void onClientTick(ClientTickEvent.Post event) {
         LAUNCHER_RENDER_HANDLER.tick();
-        MountedRopeLauncherClientInput.tick();
+        MountedRopeLauncherClientInput.sendPendingAction();
     }
 }

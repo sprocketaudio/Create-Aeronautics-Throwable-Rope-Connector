@@ -1,39 +1,46 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector.item;
 
+import com.mojang.authlib.GameProfile;
 import java.util.Optional;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.common.util.BlockSnapshot;
+import net.neoforged.neoforge.common.util.FakePlayerFactory;
+import net.neoforged.neoforge.event.EventHooks;
 import org.jetbrains.annotations.Nullable;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.AnchorProtection;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 
 public final class ThrowableRopeConnectorPlacement {
     public static final Component CANNOT_ATTACH_THERE = Component.translatable("message.create_aeronautics_throwable_rope_connector.cannot_attach_there");
     private static final Component MISSING_SIMULATED = Component.translatable("message.create_aeronautics_throwable_rope_connector.missing_simulated");
+    private static final GameProfile AUTOMATED_LAUNCHER = new GameProfile(UUID.fromString("945effc4-7c28-44cc-b6b0-a688a7fedebb"), "[Rope Launcher]");
 
     private ThrowableRopeConnectorPlacement() {
     }
 
-    public static boolean placeConnectorAndGiveRope(ServerLevel level, Player player, BlockHitResult hitResult, int sourceSlot, boolean consumeOnSuccessOnly) {
+    public static boolean placeConnectorAndGiveRope(ServerLevel level, ServerPlayer player, BlockHitResult hitResult, int sourceSlot, boolean consumeOnSuccessOnly) {
         Optional<PlacementTarget> target = resolvePlacementTarget(level, player, hitResult);
         if (target.isEmpty()) {
             return false;
@@ -54,12 +61,11 @@ public final class ThrowableRopeConnectorPlacement {
         ItemStack connectorPlacementStack = new ItemStack(maybeConnectorItem.get());
         BlockHitResult placeHit = new BlockHitResult(target.get().hitLocation(), target.get().face(), target.get().targetPos(), false);
         BlockPlaceContext placeContext = new BlockPlaceContext(player, InteractionHand.MAIN_HAND, connectorPlacementStack, placeHit);
-        InteractionResult placementResult = maybeConnectorItem.get().place(placeContext);
-        if (!placementResult.consumesAction()) {
+        if (!placeContext.getClickedPos().equals(target.get().placePos()) || !connectorPlacementStack.useOn(placeContext).consumesAction()) {
             return false;
         }
 
-        giveToSourceSlot(player, maybeRopeStack.get(), sourceSlot, consumeOnSuccessOnly);
+        giveToSourceSlot(player, maybeRopeStack.get(), sourceSlot, ModItems.THROWABLE_ROPE_CONNECTOR.get(), consumeOnSuccessOnly);
         player.getCooldowns().addCooldown(ModItems.THROWABLE_ROPE_CONNECTOR.get(), ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
 
         if (ModCommonConfig.PLAY_PARTICLES.get()) {
@@ -79,8 +85,14 @@ public final class ThrowableRopeConnectorPlacement {
         return true;
     }
 
-    public static Optional<BlockPos> placeConnectorFromMountedLauncher(ServerLevel level, BlockHitResult hitResult) {
-        Optional<PlacementTarget> target = resolvePlacementTarget(level, null, hitResult);
+    public static Optional<BlockPos> placeConnectorFromMountedLauncher(ServerLevel level, BlockHitResult hitResult, @Nullable ServerPlayer player) {
+        ServerPlayer actor = player;
+        if (actor == null) {
+            actor = FakePlayerFactory.get(level, AUTOMATED_LAUNCHER);
+            Direction face = hitResult.getDirection();
+            actor.setYRot((face.getAxis().isHorizontal() ? face : Direction.NORTH).toYRot());
+        }
+        Optional<PlacementTarget> target = resolvePlacementTarget(level, actor, hitResult);
         if (target.isEmpty()) {
             return Optional.empty();
         }
@@ -92,19 +104,26 @@ public final class ThrowableRopeConnectorPlacement {
         }
 
         ItemStack connectorPlacementStack = new ItemStack(maybeConnectorItem.get());
-        BlockPlaceContext placeContext = new net.minecraft.world.item.context.DirectionalPlaceContext(
-                level,
-                target.get().placePos(),
-                target.get().face(),
-                connectorPlacementStack,
-                target.get().face()
+        BlockPlaceContext placeContext = new BlockPlaceContext(
+                level, actor, InteractionHand.MAIN_HAND, connectorPlacementStack, hitResult
         );
-        InteractionResult placementResult = maybeConnectorItem.get().place(placeContext);
-        if (!placementResult.consumesAction()) {
+        BlockPos placePos = target.get().placePos();
+        if (!placeContext.getClickedPos().equals(placePos)) {
             return Optional.empty();
         }
-
-        return Optional.of(target.get().placePos());
+        if (player != null) {
+            return connectorPlacementStack.useOn(placeContext).consumesAction() ? Optional.of(placePos) : Optional.empty();
+        }
+        // Automated placement needs its own event and rollback for cancellable placement hooks.
+        BlockSnapshot snapshot = BlockSnapshot.create(level.dimension(), level, placePos);
+        if (!maybeConnectorItem.get().place(placeContext).consumesAction()) {
+            return Optional.empty();
+        }
+        if (EventHooks.onBlockPlace(actor, snapshot, target.get().face())) {
+            snapshot.restore();
+            return Optional.empty();
+        }
+        return Optional.of(placePos);
     }
 
     public static void returnThrowableItem(Player player, int sourceSlot) {
@@ -115,28 +134,55 @@ public final class ThrowableRopeConnectorPlacement {
         giveThrowableToSourceSlot(player, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()), sourceSlot);
     }
 
-    public static void fail(Player player, Component message) {
+    public static boolean prepareDockCoupling(Player player, BlockPos connectorPos, ItemStack ammo, int sourceSlot, boolean ammoPaid) {
+        ItemStack prepared = ammo.copy();
+        if (!CreateSimulatedIntegration.setFirstConnection(prepared, connectorPos)) {
+            return false;
+        }
+        if (!ammoPaid && !player.hasInfiniteMaterials()) {
+            int slot = isValidPlayerInventorySlot(player, sourceSlot)
+                    && ItemStack.isSameItemSameComponents(player.getInventory().getItem(sourceSlot), ammo) ? sourceSlot : -1;
+            for (int index = 0; slot < 0 && index < player.getInventory().getContainerSize(); index++) {
+                if (isValidPlayerInventorySlot(player, index)
+                        && ItemStack.isSameItemSameComponents(player.getInventory().getItem(index), ammo)) {
+                    slot = index;
+                }
+            }
+            if (slot < 0) {
+                return false;
+            }
+            player.getInventory().removeItem(slot, 1);
+        }
+        giveToSourceSlot(player, prepared, sourceSlot, ammo.getItem(), false);
+        return true;
+    }
+
+    public static void returnLauncherAmmo(Player player, ItemStack stack, int sourceSlot) {
+        giveThrowableToSourceSlot(player, stack, sourceSlot);
+    }
+
+    public static void fail(Player player, @Nullable Component message) {
         if (player.level().isClientSide()) {
             return;
         }
 
-        if (ModCommonConfig.SHOW_FAILURE_MESSAGES.get()) {
+        if (message != null && ModCommonConfig.SHOW_FAILURE_MESSAGES.get()) {
             player.displayClientMessage(message, true);
         }
 
         player.level().playSound(null, player.blockPosition(), SoundEvents.DISPENSER_FAIL, SoundSource.PLAYERS, 0.5F, 1.0F);
     }
 
-    private static Optional<PlacementTarget> resolvePlacementTarget(Level level, @Nullable Player player, BlockHitResult hitResult) {
+    private static Optional<PlacementTarget> resolvePlacementTarget(ServerLevel level, ServerPlayer player, BlockHitResult hitResult) {
         BlockPos targetPos = hitResult.getBlockPos();
         Direction face = hitResult.getDirection();
         BlockPos placePos = targetPos.relative(face);
 
-        if (player != null && (!level.mayInteract(player, targetPos) || !level.mayInteract(player, placePos))) {
+        if (!AnchorProtection.canPlace(level, placePos, player) || !level.mayInteract(player, AnchorProtection.projectToWorld(level, targetPos))) {
             return Optional.empty();
         }
 
-        if (player != null && !player.mayUseItemAt(placePos, face, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()))) {
+        if (!player.mayUseItemAt(placePos, face, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()))) {
             return Optional.empty();
         }
 
@@ -160,7 +206,7 @@ public final class ThrowableRopeConnectorPlacement {
         }
     }
 
-    private static void giveToSourceSlot(Player player, ItemStack stack, int sourceSlot, boolean consumeThrowableFromInventory) {
+    private static void giveToSourceSlot(Player player, ItemStack stack, int sourceSlot, Item ammoItem, boolean consumeThrowableFromInventory) {
         if (consumeThrowableFromInventory && !consumeThrowable(player, sourceSlot)) {
             giveToPlayer(player, stack);
             return;
@@ -177,9 +223,8 @@ public final class ThrowableRopeConnectorPlacement {
             return;
         }
 
-        if (current.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
-            ItemStack remainingThrowableConnectors = current.copy();
-            if (moveStackOutOfSourceSlot(player, remainingThrowableConnectors, sourceSlot)) {
+        if (current.is(ammoItem) && CreateSimulatedIntegration.isLauncherAmmo(current)) {
+            if (moveStackOutOfSourceSlot(player, current.copy(), sourceSlot)) {
                 player.getInventory().setItem(sourceSlot, stack);
             } else {
                 dropNearPlayer(player, stack);
@@ -202,7 +247,7 @@ public final class ThrowableRopeConnectorPlacement {
             return;
         }
 
-        if (current.is(ModItems.THROWABLE_ROPE_CONNECTOR.get()) && current.getCount() < current.getMaxStackSize()) {
+        if (ItemStack.isSameItemSameComponents(current, stack) && current.getCount() < current.getMaxStackSize()) {
             current.grow(stack.getCount());
             return;
         }

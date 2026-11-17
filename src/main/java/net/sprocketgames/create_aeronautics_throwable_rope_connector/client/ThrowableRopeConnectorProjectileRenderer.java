@@ -23,7 +23,6 @@ import net.minecraft.world.phys.Vec3;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
-import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
 import org.joml.Vector3f;
 
 public final class ThrowableRopeConnectorProjectileRenderer extends EntityRenderer<ThrowableRopeConnectorProjectile> {
@@ -31,14 +30,10 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
     private static final ResourceLocation ROPE_TEXTURE = ResourceLocation.fromNamespaceAndPath("simulated", "textures/block/rope_particle.png");
 
     private final ItemRenderer itemRenderer;
-    private final ItemStack connectorModelStack;
 
     public ThrowableRopeConnectorProjectileRenderer(EntityRendererProvider.Context context) {
         super(context);
         this.itemRenderer = context.getItemRenderer();
-        this.connectorModelStack = CreateSimulatedIntegration.getRopeConnectorItem()
-                .map(ItemStack::new)
-                .orElse(ItemStack.EMPTY);
     }
 
     @Override
@@ -48,7 +43,7 @@ public final class ThrowableRopeConnectorProjectileRenderer extends EntityRender
 
     @Override
     public void render(ThrowableRopeConnectorProjectile entity, float entityYaw, float partialTicks, PoseStack poseStack, MultiBufferSource buffer, int packedLight) {
-        ItemStack stack = this.connectorModelStack.isEmpty() ? entity.getItem() : this.connectorModelStack;
+        ItemStack stack = entity.getItem();
         if (entity.tickCount >= 2 || !(this.entityRenderDispatcher.camera.getEntity().distanceToSqr(entity) < MIN_CAMERA_DISTANCE_SQUARED)) {
             poseStack.pushPose();
             poseStack.mulPose(this.entityRenderDispatcher.cameraOrientation());

@@ -11,7 +11,7 @@ public final class ModNetworking {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("1")
+        event.registrar("2")
                 .playToClient(
                         RopeConnectorLauncherShootPacket.TYPE,
                         RopeConnectorLauncherShootPacket.STREAM_CODEC,
@@ -59,7 +59,7 @@ public final class ModNetworking {
         if (context.player() instanceof ServerPlayer player
                 && player.getVehicle() instanceof MountedRopeLauncherSeatEntity seat
                 && seat.getId() == packet.seatEntityId()) {
-            seat.release(player);
+            seat.release(player, packet.removeAnchor());
         }
     }
 }

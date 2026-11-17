@@ -39,6 +39,8 @@ bin/
 /.tmp_jar_inspect/
 
 ### Minecraft Modding ###
+/libs/create-aeronautics-bundled-1.21.1-1.3.2.jar
+/libs/sable-neoforge-1.21.1-2.0.6.jar
 run/
 !**/src/**/run/
 **/src/generated/**/.cache/

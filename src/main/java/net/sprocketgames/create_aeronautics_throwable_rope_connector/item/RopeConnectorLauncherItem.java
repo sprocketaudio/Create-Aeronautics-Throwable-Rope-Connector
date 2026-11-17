@@ -1,6 +1,7 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector.item;
 
 import java.util.function.Consumer;
+import java.util.List;
 import com.simibubi.create.content.equipment.zapper.ShootableGadgetItemMethods;
 import com.simibubi.create.foundation.item.CustomArmPoseItem;
 import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
@@ -18,18 +19,20 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.UseAnim;
+import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.client.CreateAeronauticsThrowableRopeConnectorClient;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.client.RopeConnectorLauncherItemRenderer;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.config.ModCommonConfig;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.network.RopeConnectorLauncherShootPacket;
-import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIntegration;
 import org.jetbrains.annotations.Nullable;
 
 public final class RopeConnectorLauncherItem extends Item implements CustomArmPoseItem {
@@ -40,17 +43,31 @@ public final class RopeConnectorLauncherItem extends Item implements CustomArmPo
         super(properties);
     }
 
+    public static void skipCouplingUseWhenAimingLauncher(PlayerInteractEvent.RightClickBlock event) {
+        Player player = event.getEntity();
+        ItemStack main = player.getMainHandItem();
+        ItemStack off = player.getOffhandItem();
+        if (event.getHand() == InteractionHand.MAIN_HAND && off.getItem() instanceof RopeConnectorLauncherItem
+                && CreateSimulatedIntegration.isRopeCoupling(main) && CreateSimulatedIntegration.isLauncherAmmo(main)
+                && CreateSimulatedIntegration.isRopeConnector(event.getLevel(), event.getPos())) {
+            event.setUseItem(net.neoforged.neoforge.common.util.TriState.FALSE);
+        }
+    }
+
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand usedHand) {
         ItemStack launcherStack = player.getItemInHand(usedHand);
+        InteractionHand ammoHand = usedHand == InteractionHand.MAIN_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+        ItemStack ammoStack = player.getItemInHand(ammoHand);
+        if (CreateSimulatedIntegration.isPreparedRopeCoupling(ammoStack)) {
+            return InteractionResultHolder.pass(launcherStack);
+        }
         if (ShootableGadgetItemMethods.shouldSwap(player, launcherStack, usedHand, stack -> stack.getItem() instanceof RopeConnectorLauncherItem)) {
             return InteractionResultHolder.fail(launcherStack);
         }
 
-        InteractionHand ammoHand = usedHand == InteractionHand.MAIN_HAND ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
-        ItemStack ammoStack = player.getItemInHand(ammoHand);
         boolean mainHandLauncher = usedHand == InteractionHand.MAIN_HAND;
-        if (!ammoStack.is(ModItems.THROWABLE_ROPE_CONNECTOR.get())) {
+        if (!CreateSimulatedIntegration.isLauncherAmmo(ammoStack)) {
             if (!level.isClientSide()) {
                 ThrowableRopeConnectorPlacement.fail(player, OFFHAND_AMMO_REQUIRED);
             }
@@ -68,17 +85,25 @@ public final class RopeConnectorLauncherItem extends Item implements CustomArmPo
                 .subtract(player.position().add(0.0D, player.getEyeHeight(), 0.0D));
         Vec3 motion = player.getLookAngle().add(correction).normalize().scale(LAUNCHER_VELOCITY);
 
-        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(level, barrelPos.x, barrelPos.y, barrelPos.z, ModCommonConfig.getClampedLauncherMaxDistance());
+        boolean coupling = CreateSimulatedIntegration.isRopeCoupling(ammoStack);
+        Vec3 origin = coupling ? player.getEyePosition() : barrelPos;
+        ThrowableRopeConnectorProjectile projectile = new ThrowableRopeConnectorProjectile(
+                level, origin.x, origin.y, origin.z, ModCommonConfig.getClampedLauncherMaxDistance());
         projectile.setOwner(player);
         projectile.setSourceSlot(getSourceSlot(player, ammoHand));
         projectile.setTrailFromOffhand(usedHand == InteractionHand.OFF_HAND);
         projectile.setTrailFromLauncher(true);
-        projectile.setConsumeOnSuccessOnly(ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get());
-        projectile.setItem(new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()));
-        projectile.setDeltaMovement(motion);
-        level.addFreshEntity(projectile);
+        boolean consumeOnSuccessOnly = ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get();
+        projectile.setConsumeOnSuccessOnly(consumeOnSuccessOnly);
+        projectile.setItem(ammoStack.copyWithCount(1));
+        projectile.setAmmoPaid(!consumeOnSuccessOnly && !player.hasInfiniteMaterials());
+        projectile.setNoGravity(coupling);
+        projectile.setDeltaMovement(coupling ? player.getLookAngle().scale(LAUNCHER_VELOCITY) : motion);
+        if (!level.addFreshEntity(projectile)) {
+            return InteractionResultHolder.fail(launcherStack);
+        }
 
-        if (!ModCommonConfig.CONSUME_ON_SUCCESS_ONLY.get() && !player.hasInfiniteMaterials()) {
+        if (!consumeOnSuccessOnly && !player.hasInfiniteMaterials()) {
             ammoStack.consume(1, player);
         }
 
@@ -86,6 +111,14 @@ public final class RopeConnectorLauncherItem extends Item implements CustomArmPo
         player.getCooldowns().addCooldown(this, ModCommonConfig.DEFAULT_COOLDOWN_TICKS);
         sendShootPackets(player, usedHand, barrelPos, 0.8F);
         return new InteractionResultHolder<>(InteractionResult.SUCCESS, launcherStack);
+    }
+
+    @Override
+    public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
+        tooltip.add(Component.translatable("message.create_aeronautics_throwable_rope_connector.offhand_ammo_required")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("tooltip.create_aeronautics_throwable_rope_connector.launcher_redocking")
+                .withStyle(net.minecraft.ChatFormatting.GRAY));
     }
 
     private static int getSourceSlot(Player player, InteractionHand ammoHand) {

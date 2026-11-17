@@ -25,6 +25,13 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
     maven { url = "https://maven.createmod.net" }
@@ -34,17 +41,35 @@ base {
     archivesName = mod_id
 }
 
-def aeronauticsBundleJar = file("libs/create-aeronautics-bundled-1.21.1-1.3.0.jar")
-def sableJar = file("libs/sable-neoforge-1.21.1-2.0.1.jar")
-def extractedSimulatedJar = layout.buildDirectory.file("local-mod-deps/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.3.0.jar")
+def aeronauticsVersion = "1.3.2"
+def packMods = "E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods"
+def createJar = file(providers.gradleProperty("createJar").getOrElse("${packMods}/create-1.21.1-6.0.10.jar"))
+def jadeJar = file(providers.gradleProperty("jadeJar").getOrElse("${packMods}/Jade-1.21.1-NeoForge-15.10.5.jar"))
+def ftbChunksJar = file(providers.gradleProperty("ftbChunksJar").getOrElse("${packMods}/ftb-chunks-neoforge-2101.1.14.jar"))
+def testWithClaims = providers.gradleProperty("testWithClaims").isPresent()
+def ftbLibraryJar = file(providers.gradleProperty("ftbLibraryJar").getOrElse("${packMods}/ftb-library-neoforge-2101.1.31.jar"))
+def ftbTeamsJar = file(providers.gradleProperty("ftbTeamsJar").getOrElse("${packMods}/ftb-teams-neoforge-2101.1.10.jar"))
+def architecturyJar = file(providers.gradleProperty("architecturyJar").getOrElse("${packMods}/architectury-13.0.8-neoforge.jar"))
+def aeronauticsBundleJar = file("libs/create-aeronautics-bundled-1.21.1-${aeronauticsVersion}.jar")
+def sableJar = file("libs/sable-neoforge-1.21.1-2.0.6.jar")
+def simulatedJarName = "dev.simulated_team.simulated.simulated-neoforge-1.21.1-${aeronauticsVersion}.jar"
+def ponderJarName = "ponder-neoforge-1.0.82+mc1.21.1.jar"
+def sableCompanionJarName = "sable-companion-common-1.21.1-1.6.0.jar"
+def extractedDeps = layout.buildDirectory.dir("local-mod-deps")
 
-tasks.register("extractSimulatedJar", Copy) {
+tasks.register("extractBundledCompileDeps", Copy) {
     from(zipTree(aeronauticsBundleJar)) {
-        include "META-INF/jarjar/dev.simulated_team.simulated.simulated-neoforge-1.21.1-1.3.0.jar"
-        eachFile { details -> details.path = details.name }
-        includeEmptyDirs = false
+        include "META-INF/jarjar/${simulatedJarName}"
     }
-    into extractedSimulatedJar.map { it.asFile.parentFile }
+    from(zipTree(createJar)) {
+        include "META-INF/jarjar/${ponderJarName}"
+    }
+    from(zipTree(sableJar)) {
+        include "META-INF/jarjar/${sableCompanionJarName}"
+    }
+    eachFile { details -> details.path = details.name }
+    includeEmptyDirs = false
+    into extractedDeps
 }
 
 // Mojang ships Java 21 to end users in 1.21.1, so mods should target Java 21.
@@ -89,6 +114,7 @@ runs {
     // By default, the server will crash when no gametests are provided.
     // The gametest system is also enabled by default for other run configs under the /test command.
     gameTestServer {
+        modSource project.sourceSets.gameTest
         systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
     }
 
@@ -107,6 +133,8 @@ runs {
 // "optional", meaning it will not be pulled by dependents of this mod.
 configurations {
     runtimeClasspath.extendsFrom localRuntime
+    gameTestImplementation.extendsFrom implementation
+    gameTestCompileOnly.extendsFrom compileOnly
 }
 
 dependencies {
@@ -117,14 +145,24 @@ dependencies {
     // And its provides the option to then use net.minecraft as the group, and one of; client, server or joined as the module name, plus the game version as version.
     // For all intends and purposes: You can treat this dependency as if it is a normal library you would use.
     implementation "net.neoforged:neoforge:${neo_version}"
-    compileOnly files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
-    compileOnly files(extractedSimulatedJar)
+    compileOnly files(createJar, jadeJar, ftbChunksJar)
+    compileOnly files([simulatedJarName, ponderJarName, sableCompanionJarName].collect { name ->
+        extractedDeps.map { it.file(name) }
+    })
     compileOnly files(sableJar)
     compileOnly files("libs/flywheel-neoforge-1.21.1-1.0.6.jar")
-    compileOnly "net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1"
-    localRuntime files("E:/Games/CurseForge/Instances/Instances/Fractured Skies/mods/create-1.21.1-6.0.10.jar")
+    localRuntime files(createJar)
     localRuntime files(aeronauticsBundleJar)
     localRuntime files(sableJar)
+    if (providers.gradleProperty("testWithJade").isPresent()) {
+        localRuntime files(jadeJar)
+    }
+    if (testWithClaims) {
+        gameTestCompileOnly files(ftbLibraryJar, ftbTeamsJar)
+        localRuntime files(ftbChunksJar, ftbLibraryJar, ftbTeamsJar, architecturyJar)
+    } else {
+        sourceSets.gameTest.java.exclude('**/DockingClaimTests.java')
+    }
 
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
@@ -186,7 +224,7 @@ publishing {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    dependsOn tasks.named("extractSimulatedJar")
+    dependsOn tasks.named("extractBundledCompileDeps")
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
 
