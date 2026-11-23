@@ -18,6 +18,7 @@ import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.entity.IEntityWithComplexSpawn;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlock;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedLauncherOrientation;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModEntityTypes;
 
 public final class MountedRopeLauncherSeatEntity extends Entity implements IEntityWithComplexSpawn {
@@ -136,8 +137,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
         }
 
         Vec3 localLookDirection = launcher.worldDirectionToLocal(passenger.getLookAngle());
-        float clampedYaw = MountedRopeLauncherBlockEntity.clampYawForFacing(
-                state.getValue(MountedRopeLauncherBlock.FACING),
+        float clampedYaw = MountedRopeLauncherBlockEntity.clampMountedYaw(
                 (float) Math.toDegrees(Math.atan2(-localLookDirection.x, localLookDirection.z))
         );
         float clampedPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(
@@ -172,6 +172,12 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
     private Vec3 getSeatPosition() {
         Vec3 localSeatPos = Vec3.atBottomCenterOf(this.launcherPos).add(0.0D, 0.4D, 0.0D);
         if (this.level().getBlockEntity(this.launcherPos) instanceof MountedRopeLauncherBlockEntity launcher) {
+            var orientation = launcher.getOrientation();
+            if (orientation.up() != Direction.UP) {
+                // Riders stay upright, even when the mount rests on a wall or the ceiling.
+                double clearance = orientation.up() == Direction.DOWN ? 2.2D : 1.3D;
+                localSeatPos = this.launcherPos.getCenter().add(orientation.toBlockSpace(new Vec3(0, clearance, -0.85D)));
+            }
             return launcher.projectLocalPositionToWorld(localSeatPos);
         }
         return localSeatPos;
@@ -187,7 +193,7 @@ public final class MountedRopeLauncherSeatEntity extends Entity implements IEnti
         Direction facing = Direction.NORTH;
         BlockState state = this.level().getBlockState(this.launcherPos);
         if (state.getBlock() instanceof MountedRopeLauncherBlock) {
-            facing = state.getValue(MountedRopeLauncherBlock.FACING);
+            facing = MountedLauncherOrientation.of(state).forward();
         }
 
         Vec3 fallback = super.getDismountLocationForPassenger(passenger);

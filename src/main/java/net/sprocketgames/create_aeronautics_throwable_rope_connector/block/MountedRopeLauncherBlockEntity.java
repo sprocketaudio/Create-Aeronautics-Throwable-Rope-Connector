@@ -119,7 +119,6 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     public MountedRopeLauncherBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
         super(type, pos, state);
-        this.aimYaw = yawFromFacing(state.getValue(MountedRopeLauncherBlock.FACING));
     }
 
     public MountedRopeLauncherBlockEntity(BlockPos pos, BlockState state) {
@@ -156,13 +155,16 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void fire(@Nullable ServerPlayer player) {
-        this.fireInDirection(player, Vec3.atLowerCornerOf(this.getFacing().getNormal()), this.getBarrelPosition(), true);
+        Vec3 localDirection = this.getOrientation().toBlockSpace(new Vec3(0, 0, 1));
+        Vec3 localOrigin = this.getBarrelPosition();
+        this.fireInDirection(player, this.projectDirectionOutOfSubLevel(localDirection, localOrigin),
+                this.projectPositionOutOfSubLevel(localOrigin), true);
     }
 
     public void fireFromRider(ServerPlayer player) {
         if (CreateSimulatedIntegration.isRopeCoupling(this.inventory.getStackInSlot(0))) {
             Vec3 localLook = this.worldDirectionToLocal(player.getLookAngle());
-            float yaw = clampYawForFacing(this.getFacing(), yawFromDirection(localLook));
+            float yaw = clampMountedYaw(yawFromDirection(localLook));
             float pitch = clampMountedPitch(pitchFromDirection(localLook));
             Vec3 direction = this.localDirectionToWorld(Vec3.directionFromRotation(pitch, yaw));
             Vec3 eye = Sable.HELPER.projectOutOfSubLevel(player.level(), player.getEyePosition());
@@ -172,7 +174,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         }
 
         float clampedPitch = clampMountedPitch(this.aimPitch);
-        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        float clampedYaw = clampMountedYaw(this.aimYaw);
         Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, true);
         Vec3 localLaunchPos = this.getMountedMuzzlePosition(localDirection);
         Vec3 launchPos = this.projectPositionOutOfSubLevel(localLaunchPos);
@@ -191,7 +193,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     public void fireFromSavedAim() {
         float clampedPitch = clampMountedPitch(this.aimPitch);
-        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        float clampedYaw = clampMountedYaw(this.aimYaw);
         Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, false);
         Vec3 localLaunchPos = this.getMountedMuzzlePosition(localDirection);
         Vec3 launchPos = this.projectPositionOutOfSubLevel(localLaunchPos);
@@ -219,7 +221,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
             return;
         }
 
-        BlockPos front = this.worldPosition.above().relative(this.getFacing());
+        BlockPos front = MountedRopeLauncherBlock.getHeadPos(this.getBlockState(), this.worldPosition).relative(this.getOrientation().forward());
         if (checkFixedFront && !serverLevel.getBlockState(front).getCollisionShape(serverLevel, front).isEmpty()) {
             this.message(player, BLOCKED);
             serverLevel.playSound(null, this.worldPosition, SoundEvents.DISPENSER_FAIL, SoundSource.BLOCKS, 0.5F, 1.0F);
@@ -304,7 +306,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void setAim(float yaw, float pitch) {
-        float clampedYaw = clampYawForFacing(this.getFacing(), yaw);
+        float clampedYaw = clampMountedYaw(yaw);
         float clampedPitch = clampMountedPitch(pitch);
         if (Math.abs(this.aimYaw - clampedYaw) < 0.5F && Math.abs(this.aimPitch - clampedPitch) < 0.5F) {
             return;
@@ -316,15 +318,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public void setAimFromDirection(Vec3 localDirection) {
-        float clampedYaw = clampYawForFacing(this.getFacing(), yawFromDirection(localDirection));
-        float clampedPitch = clampMountedPitch(pitchFromDirection(localDirection));
-        if (Math.abs(this.aimYaw - clampedYaw) < 0.5F && Math.abs(this.aimPitch - clampedPitch) < 0.5F) {
-            return;
-        }
-
-        this.aimYaw = clampedYaw;
-        this.aimPitch = clampedPitch;
-        this.notifyUpdate();
+        this.setAim(yawFromDirection(localDirection), pitchFromDirection(localDirection));
     }
 
     public void setAimFromWorldDirection(Vec3 worldDirection) {
@@ -516,7 +510,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     protected void write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.write(tag, registries, clientPacket);
         tag.put("Inventory", this.inventory.serializeNBT(registries));
-        tag.putFloat("AimYaw", this.aimYaw);
+        tag.putFloat("LocalAimYaw", this.aimYaw);
         tag.putFloat("AimPitch", this.aimPitch);
         tag.putBoolean("FireRedstonePowered", this.fireRedstonePowered);
         tag.putBoolean("ReleaseRedstonePowered", this.releaseRedstonePowered);
@@ -533,7 +527,8 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     protected void read(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket) {
         super.read(tag, registries, clientPacket);
         this.inventory.deserializeNBT(registries, tag.getCompound("Inventory"));
-        this.aimYaw = tag.getFloat("AimYaw");
+        this.aimYaw = tag.contains("LocalAimYaw") ? tag.getFloat("LocalAimYaw")
+                : tag.contains("AimYaw") ? clampMountedYaw(tag.getFloat("AimYaw") - yawFromFacing(this.getOrientation().forward())) : 0.0F;
         this.aimPitch = tag.getFloat("AimPitch");
         this.pendingShot = tag.hasUUID("PendingShot") ? tag.getUUID("PendingShot") : null;
         this.pendingShotExpires = tag.getLong("PendingShotExpires");
@@ -547,11 +542,11 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
 
     @Override
     public AABB getRenderBoundingBox() {
-        return super.getRenderBoundingBox().minmax(new AABB(this.worldPosition.above())).inflate(1.0D);
+        return super.getRenderBoundingBox().minmax(new AABB(MountedRopeLauncherBlock.getHeadPos(this.getBlockState(), this.worldPosition))).inflate(1.0D);
     }
 
-    private Direction getFacing() {
-        return this.getBlockState().getValue(MountedRopeLauncherBlock.FACING);
+    public MountedLauncherOrientation getOrientation() {
+        return MountedLauncherOrientation.of(this.getBlockState());
     }
 
     private static float yawFromFacing(Direction facing) {
@@ -563,10 +558,8 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         };
     }
 
-    public static float clampYawForFacing(Direction facing, float yaw) {
-        float baseYaw = yawFromFacing(facing);
-        float delta = Mth.wrapDegrees(yaw - baseYaw);
-        return baseYaw + Mth.clamp(delta, -MAX_MOUNTED_YAW_OFFSET, MAX_MOUNTED_YAW_OFFSET);
+    public static float clampMountedYaw(float yaw) {
+        return Mth.clamp(Mth.wrapDegrees(yaw), -MAX_MOUNTED_YAW_OFFSET, MAX_MOUNTED_YAW_OFFSET);
     }
 
     public static float clampMountedPitch(float pitch) {
@@ -574,26 +567,12 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     private Vec3 getBarrelPosition() {
-        Direction facing = this.getFacing();
-        return this.getBaseAttachmentPoint().add(
-                facing.getStepX() * 0.8D,
-                0.85D,
-                facing.getStepZ() * 0.8D
-        );
-    }
-
-    private Vec3 getRedstoneBarrelPosition() {
-        Direction facing = this.getFacing();
-        return this.getBaseAttachmentPoint().add(
-                facing.getStepX() * 0.68D,
-                0.58D,
-                facing.getStepZ() * 0.68D
-        );
+        return this.getBaseAttachmentPoint().add(this.getOrientation().toBlockSpace(new Vec3(0, 0.85D, 0.8D)));
     }
 
     public Vec3 getAutomatedTrailStartPosition() {
         float clampedPitch = clampMountedPitch(this.aimPitch);
-        float clampedYaw = clampYawForFacing(this.getFacing(), this.aimYaw);
+        float clampedYaw = clampMountedYaw(this.aimYaw);
         Vec3 localDirection = this.getMountedLaunchDirection(clampedYaw, clampedPitch, false);
         Vec3 localTrailStart = this.getMountedTrailStartPosition(localDirection);
         return this.projectPositionOutOfSubLevel(localTrailStart);
@@ -616,7 +595,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     private Vec3 getMountedHeadPivotPosition() {
-        return Vec3.atBottomCenterOf(this.worldPosition).add(0.0D, HEAD_PIVOT_HEIGHT, 0.0D);
+        return this.worldPosition.getCenter().add(this.getOrientation().toBlockSpace(new Vec3(0, HEAD_PIVOT_HEIGHT - 0.5D, 0)));
     }
 
     private Vec3 getMountedMuzzlePosition(Vec3 localDirection) {
@@ -743,7 +722,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
         if (this.getContainingSubLevelPose() != null) {
             pitchOffset += mountedManualFire ? SABLE_MOUNTED_FIRE_PITCH_OFFSET : SABLE_REDSTONE_FIRE_PITCH_OFFSET;
         }
-        return Vec3.directionFromRotation(pitch - pitchOffset, yaw).normalize();
+        return this.getOrientation().toBlockSpace(Vec3.directionFromRotation(pitch - pitchOffset, yaw)).normalize();
     }
 
     private Vec3 projectPositionOutOfSubLevel(Vec3 localPosition) {
@@ -795,6 +774,10 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public Vec3 worldDirectionToLocal(Vec3 worldDirection) {
+        return this.getOrientation().toLauncherSpace(this.worldDirectionToSubLevel(worldDirection));
+    }
+
+    private Vec3 worldDirectionToSubLevel(Vec3 worldDirection) {
         Object pose = this.getContainingSubLevelPose();
         if (pose != null) {
             try {
@@ -821,7 +804,7 @@ public final class MountedRopeLauncherBlockEntity extends RopeWinchBlockEntity {
     }
 
     public Vec3 localDirectionToWorld(Vec3 localDirection) {
-        return this.projectDirectionOutOfSubLevel(localDirection, this.getMountedHeadPivotPosition()).normalize();
+        return this.projectDirectionOutOfSubLevel(this.getOrientation().toBlockSpace(localDirection), this.getMountedHeadPivotPosition()).normalize();
     }
 
 

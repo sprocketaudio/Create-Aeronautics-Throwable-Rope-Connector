@@ -6,7 +6,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlock;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
@@ -50,10 +49,7 @@ public final class MountedLauncherJadePlugin implements IWailaPlugin {
 
         @Override
         public void appendServerData(CompoundTag data, BlockAccessor accessor) {
-            BlockPos base = accessor.getPosition();
-            if (accessor.getBlockState().getValue(MountedRopeLauncherBlock.HALF) == DoubleBlockHalf.UPPER) {
-                base = base.below();
-            }
+            BlockPos base = MountedRopeLauncherBlock.getBasePos(accessor.getBlockState(), accessor.getPosition());
             if (accessor.getLevel().getBlockEntity(base) instanceof MountedRopeLauncherBlockEntity launcher) {
                 data.putBoolean("LauncherConnected", launcher.isConnected());
                 ItemStack ammo = launcher.getLoadedAmmo();

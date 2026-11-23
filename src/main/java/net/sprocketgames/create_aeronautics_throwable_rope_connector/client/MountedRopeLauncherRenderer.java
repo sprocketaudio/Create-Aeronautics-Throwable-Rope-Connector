@@ -14,6 +14,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.state.BlockState;
@@ -21,6 +22,8 @@ import net.minecraft.world.phys.Vec3;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.CreateAeronauticsThrowableRopeConnector;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
+import org.joml.Matrix3f;
+import org.joml.Quaternionf;
 
 public final class MountedRopeLauncherRenderer extends RopeWinchRenderer {
     private static final float PITCH_VISUAL_MULTIPLIER = 1.0F;
@@ -36,6 +39,9 @@ public final class MountedRopeLauncherRenderer extends RopeWinchRenderer {
             CreateAeronauticsThrowableRopeConnector.MOD_ID,
             "block/cog"
     ));
+    static final ResourceLocation BASE_MODEL = ResourceLocation.fromNamespaceAndPath(
+            CreateAeronauticsThrowableRopeConnector.MOD_ID, "block/mounted_rope_launcher_base_horizontal");
+    private static final PartialModel BASE = PartialModel.of(BASE_MODEL);
 
     public MountedRopeLauncherRenderer(BlockEntityRendererProvider.Context context) {
         super(context);
@@ -74,8 +80,7 @@ public final class MountedRopeLauncherRenderer extends RopeWinchRenderer {
                 && blockEntity.getBlockPos().equals(seat.getLauncherPos())) {
             Vec3 worldLookDirection = localPlayer.getViewVector(partialTicks);
             Vec3 localLookDirection = blockEntity.worldDirectionToLocal(worldLookDirection);
-            aimYaw = MountedRopeLauncherBlockEntity.clampYawForFacing(
-                    state.getValue(net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlock.FACING),
+            aimYaw = MountedRopeLauncherBlockEntity.clampMountedYaw(
                     (float) Math.toDegrees(Math.atan2(-localLookDirection.x, localLookDirection.z))
             );
             aimPitch = MountedRopeLauncherBlockEntity.clampMountedPitch(
@@ -89,13 +94,31 @@ public final class MountedRopeLauncherRenderer extends RopeWinchRenderer {
         float yaw = Mth.wrapDegrees(180.0F - aimYaw);
         float pitch = -MountedRopeLauncherBlockEntity.clampMountedPitch(aimPitch * PITCH_VISUAL_MULTIPLIER);
 
+        var orientation = blockEntity.getOrientation();
+        var x = orientation.toBlockSpace(new Vec3(1, 0, 0)).toVector3f();
+        var y = orientation.toBlockSpace(new Vec3(0, 1, 0)).toVector3f();
+        var z = orientation.toBlockSpace(new Vec3(0, 0, 1)).toVector3f();
+        var rotation = new Quaternionf().setFromNormalized(new Matrix3f().setColumn(0, x).setColumn(1, y).setColumn(2, z));
+        VertexConsumer vertexConsumer = buffer.getBuffer(RenderType.solid());
         poseStack.pushPose();
+        poseStack.translate(0.5D, 0.5D, 0.5D);
+        poseStack.mulPose(rotation);
+        poseStack.translate(-0.5D, -0.5D, -0.5D);
+
+        if (orientation.up() != Direction.UP) {
+            poseStack.pushPose();
+            poseStack.translate(0.5D, 0.5D, 0.5D);
+            poseStack.mulPose(Axis.XN.rotationDegrees(90));
+            poseStack.translate(-0.5D, -0.5D, -0.5D);
+            CachedBuffers.partial(BASE, state).light(light).renderInto(poseStack, vertexConsumer);
+            poseStack.popPose();
+        }
+
         poseStack.translate(0.5D, HEAD_PIVOT_Y, 0.5D);
         poseStack.mulPose(Axis.YP.rotationDegrees(yaw));
         poseStack.mulPose(Axis.XP.rotationDegrees(pitch));
         poseStack.translate(-0.5D, HEAD_REST_Y_OFFSET, -0.5D);
 
-        VertexConsumer vertexConsumer = buffer.getBuffer(RenderType.solid());
         SuperByteBuffer head = CachedBuffers.partial(HEAD, state);
         head.light(light).renderInto(poseStack, vertexConsumer);
         this.renderCog(state, poseStack, vertexConsumer, light);

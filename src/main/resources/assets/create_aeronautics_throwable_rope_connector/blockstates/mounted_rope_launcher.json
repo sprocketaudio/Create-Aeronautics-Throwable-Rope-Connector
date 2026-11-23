@@ -1,29 +1,16 @@
 {
   "variants": {
-    "axis_along_first=false,facing=down,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 270, "y": 90 },
-    "axis_along_first=false,facing=east,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 270 },
-    "axis_along_first=false,facing=north,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 180 },
-    "axis_along_first=false,facing=south,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
-    "axis_along_first=false,facing=up,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 90 },
-    "axis_along_first=false,facing=west,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 90 },
-    "axis_along_first=true,facing=down,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 270 },
-    "axis_along_first=true,facing=east,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 270 },
-    "axis_along_first=true,facing=north,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 180 },
-    "axis_along_first=true,facing=south,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
-    "axis_along_first=true,facing=up,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
-    "axis_along_first=true,facing=west,half=lower": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 90 },
-
-    "axis_along_first=false,facing=down,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=false,facing=east,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=false,facing=north,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=false,facing=south,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=false,facing=up,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=false,facing=west,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=down,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=east,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=north,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=south,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=up,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
-    "axis_along_first=true,facing=west,half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" }
+    "facing=north,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 180 },
+    "facing=east,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 270 },
+    "facing=south,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
+    "facing=west,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90, "y": 90 },
+    "facing=down,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
+    "facing=up,half=lower,head_direction=up": { "model": "create_aeronautics_throwable_rope_connector:block/mounted_rope_launcher_base_horizontal", "x": 90 },
+    "half=lower,head_direction=down": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
+    "half=lower,head_direction=north": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
+    "half=lower,head_direction=east": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
+    "half=lower,head_direction=south": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
+    "half=lower,head_direction=west": { "model": "create_aeronautics_throwable_rope_connector:block/empty" },
+    "half=upper": { "model": "create_aeronautics_throwable_rope_connector:block/empty" }
   }
 }

@@ -1,5 +1,7 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector.block;
 
+import com.simibubi.create.api.contraption.BlockMovementChecks;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import dev.simulated_team.simulated.content.blocks.rope.rope_winch.RopeWinchBlock;
@@ -15,12 +17,15 @@ import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -33,6 +38,7 @@ import org.jetbrains.annotations.Nullable;
 
 public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     public static final EnumProperty<DoubleBlockHalf> HALF = BlockStateProperties.DOUBLE_BLOCK_HALF;
+    public static final DirectionProperty HEAD_DIRECTION = DirectionProperty.create("head_direction");
     private static final DirectionalAxisShaper LOWER_SHAPE = DirectionalAxisShaper.make(
             Shapes.or(
                     SimBlockShapes.ROPE_WINCH,
@@ -41,9 +47,21 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     );
     private static final VoxelShape UPPER_SHAPE = Block.box(4.0D, 0.0D, 4.0D, 12.0D, 8.0D, 12.0D);
 
+    static {
+        BlockMovementChecks.registerAttachedCheck((state, level, pos, direction) -> {
+            if (state.getBlock() instanceof MountedRopeLauncherBlock launcher
+                    && counterpartPos(state, pos).equals(pos.relative(direction))
+                    && launcher.isCounterpart(state, level.getBlockState(pos.relative(direction)))) {
+                return BlockMovementChecks.CheckResult.SUCCESS;
+            }
+            return BlockMovementChecks.CheckResult.PASS;
+        });
+    }
+
     public MountedRopeLauncherBlock(Properties properties) {
         super(properties);
-        this.registerDefaultState(this.defaultBlockState().setValue(HALF, DoubleBlockHalf.LOWER));
+        this.registerDefaultState(this.defaultBlockState().setValue(HALF, DoubleBlockHalf.LOWER)
+                .setValue(HEAD_DIRECTION, Direction.UP));
     }
 
     @Override
@@ -60,28 +78,58 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     @Nullable
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext context) {
-        BlockPos above = context.getClickedPos().above();
-        if (above.getY() >= context.getLevel().getMaxBuildHeight() || !context.getLevel().getBlockState(above).canBeReplaced(context)) {
+        Direction head = context.getClickedFace();
+        BlockPos headPos = context.getClickedPos().relative(head);
+        Level level = context.getLevel();
+        if (level.isOutsideBuildHeight(headPos) || !level.getWorldBorder().isWithinBounds(headPos)
+                || !level.getBlockState(headPos).canBeReplaced(BlockPlaceContext.at(context, headPos, head))) {
             return null;
         }
 
-        BlockState state = super.getStateForPlacement(context);
-        if (state == null) {
-            return null;
+        Direction forward = context.getHorizontalDirection();
+        if (head.getAxis().isHorizontal()) {
+            for (Direction look : context.getNearestLookingDirections()) {
+                if (look.getAxis() != head.getAxis()) {
+                    forward = look;
+                    break;
+                }
+            }
         }
+        return withOrientation(this.defaultBlockState(), forward, head);
+    }
 
-        Direction horizontalFacing = context.getHorizontalDirection();
-        boolean shaftAlongFirstCoordinate = horizontalFacing.getAxis() == Direction.Axis.Z;
-        return state
-                .setValue(FACING, horizontalFacing)
-                .setValue(AXIS_ALONG_FIRST_COORDINATE, shaftAlongFirstCoordinate)
-                .setValue(HALF, DoubleBlockHalf.LOWER);
+    private BlockState withOrientation(BlockState state, Direction forward, Direction head) {
+        Direction.Axis shaft = new MountedLauncherOrientation(forward, head).fireSide().getAxis();
+        Direction.Axis firstAxis = forward.getAxis() == Direction.Axis.X ? Direction.Axis.Y : Direction.Axis.X;
+        return state.setValue(FACING, forward).setValue(HEAD_DIRECTION, head)
+                .setValue(AXIS_ALONG_FIRST_COORDINATE, shaft == firstAxis);
+    }
+
+    @Override
+    public BlockState transform(BlockState state, StructureTransform transform) {
+        if (transform.mirror != null) {
+            state = this.mirror(state, transform.mirror);
+        }
+        var orientation = MountedLauncherOrientation.of(state);
+        return withOrientation(state, transform.rotateFacing(orientation.forward()), transform.rotateFacing(orientation.up()));
+    }
+
+    @Override
+    public BlockState rotate(BlockState state, Rotation rotation) {
+        var orientation = MountedLauncherOrientation.of(state);
+        return withOrientation(state, rotation.rotate(orientation.forward()), rotation.rotate(orientation.up()));
+    }
+
+    @Override
+    public BlockState mirror(BlockState state, Mirror mirror) {
+        var orientation = MountedLauncherOrientation.of(state);
+        return withOrientation(state, mirror.mirror(orientation.forward()), mirror.mirror(orientation.up()));
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
-        builder.add(HALF);
+        builder.add(HALF, HEAD_DIRECTION);
     }
 
     @Nullable
@@ -96,20 +144,39 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
 
     @Override
     public void setPlacedBy(Level level, BlockPos pos, BlockState state, net.minecraft.world.entity.LivingEntity placer, ItemStack stack) {
-        level.setBlock(pos.above(), state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
-        MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, pos);
-        if (blockEntity != null) {
-            blockEntity.handleRedstoneSignal(this.isFirePowered(level, pos, state), this.isReleasePowered(level, pos, state));
-        }
+        level.setBlock(counterpartPos(state, pos), state.setValue(HALF, DoubleBlockHalf.UPPER), Block.UPDATE_ALL);
+        this.updateRedstoneInputs(level, pos);
     }
 
-    private BlockPos getBasePos(BlockState state, BlockPos pos) {
-        return state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos;
+    public static BlockPos getBasePos(BlockState state, BlockPos pos) {
+        return state.getValue(HALF) == DoubleBlockHalf.UPPER ? counterpartPos(state, pos) : pos;
+    }
+
+    public static BlockPos getHeadPos(BlockState state, BlockPos basePos) {
+        return basePos.relative(state.getValue(HEAD_DIRECTION));
+    }
+
+    private static BlockPos counterpartPos(BlockState state, BlockPos pos) {
+        Direction head = state.getValue(HEAD_DIRECTION);
+        return pos.relative(state.getValue(HALF) == DoubleBlockHalf.UPPER ? head.getOpposite() : head);
+    }
+
+    private boolean isCounterpart(BlockState state, BlockState otherState) {
+        return otherState.is(this) && otherState.getValue(HALF) != state.getValue(HALF)
+                && otherState.getValue(HEAD_DIRECTION) == state.getValue(HEAD_DIRECTION)
+                && otherState.getValue(FACING) == state.getValue(FACING);
+    }
+
+    private boolean hasBase(BlockGetter level, BlockState state, BlockPos basePos) {
+        return state.getValue(HALF) == DoubleBlockHalf.LOWER || this.isCounterpart(state, level.getBlockState(basePos));
     }
 
     @Override
     protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hitResult) {
-        BlockPos basePos = this.getBasePos(state, pos);
+        BlockPos basePos = getBasePos(state, pos);
+        if (!this.hasBase(level, state, basePos)) {
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        }
         InteractionHand couplingHand = CreateSimulatedIntegration.isPreparedRopeCoupling(stack) ? hand : InteractionHand.OFF_HAND;
         ItemStack coupling = player.getItemInHand(couplingHand);
         if (CreateSimulatedIntegration.isPreparedRopeCoupling(coupling)) {
@@ -147,7 +214,10 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
-        BlockPos basePos = this.getBasePos(state, pos);
+        BlockPos basePos = getBasePos(state, pos);
+        if (!this.hasBase(level, state, basePos)) {
+            return InteractionResult.PASS;
+        }
         if (!level.isClientSide()) {
             MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
             if (blockEntity != null) {
@@ -175,35 +245,38 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
     @Override
     public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos, boolean isMoving) {
         super.neighborChanged(state, level, pos, block, fromPos, isMoving);
+        BlockPos basePos = getBasePos(state, pos);
+        if (this.hasBase(level, state, basePos)) {
+            this.updateRedstoneInputs(level, basePos);
+        }
+    }
+
+    private void updateRedstoneInputs(Level level, BlockPos basePos) {
         if (level.isClientSide()) {
             return;
         }
 
-        BlockPos basePos = this.getBasePos(state, pos);
         MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
-        if (blockEntity != null) {
-            BlockState baseState = level.getBlockState(basePos);
-            blockEntity.handleRedstoneSignal(
-                    this.isFirePowered(level, basePos, baseState),
-                    this.isReleasePowered(level, basePos, baseState)
-            );
-        }
-    }
-
-    private boolean isFirePowered(Level level, BlockPos basePos, BlockState state) {
-        return this.isSidePowered(level, basePos, state, state.getValue(FACING).getClockWise());
-    }
-
-    private boolean isReleasePowered(Level level, BlockPos basePos, BlockState state) {
-        return this.isSidePowered(level, basePos, state, state.getValue(FACING).getCounterClockWise());
-    }
-
-    private boolean isSidePowered(Level level, BlockPos basePos, BlockState state, Direction side) {
-        if (!(state.getBlock() instanceof MountedRopeLauncherBlock)) {
-            return false;
+        BlockState baseState = level.getBlockState(basePos);
+        if (blockEntity == null || !baseState.is(this)) {
+            return;
         }
 
-        return this.hasInputFrom(level, basePos, side) || this.hasInputFrom(level, basePos.above(), side);
+        if (baseState.getValue(FACING).getAxis() == baseState.getValue(HEAD_DIRECTION).getAxis()) {
+            blockEntity.handleRedstoneSignal(false, false);
+            return;
+        }
+
+        Direction fireSide = MountedLauncherOrientation.of(baseState).fireSide();
+        BlockPos headPos = getHeadPos(baseState, basePos);
+        blockEntity.handleRedstoneSignal(
+                this.isSidePowered(level, basePos, headPos, fireSide),
+                this.isSidePowered(level, basePos, headPos, fireSide.getOpposite())
+        );
+    }
+
+    private boolean isSidePowered(Level level, BlockPos basePos, BlockPos headPos, Direction side) {
+        return this.hasInputFrom(level, basePos, side) || this.hasInputFrom(level, headPos, side);
     }
 
     private boolean hasInputFrom(Level level, BlockPos targetPos, Direction side) {
@@ -214,23 +287,39 @@ public final class MountedRopeLauncherBlock extends RopeWinchBlock {
 
     @Override
     public VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext context) {
+        var orientation = MountedLauncherOrientation.of(state);
         if (state.getValue(HALF) == DoubleBlockHalf.UPPER) {
-            return UPPER_SHAPE;
+            return orientation.up() == Direction.UP ? UPPER_SHAPE : orientation.rotateShape(UPPER_SHAPE);
         }
 
-        return LOWER_SHAPE.get(state.getValue(FACING), state.getValue(AXIS_ALONG_FIRST_COORDINATE));
+        return orientation.up() == Direction.UP ? LOWER_SHAPE.get(orientation.forward(), state.getValue(AXIS_ALONG_FIRST_COORDINATE))
+                : orientation.rotateShape(LOWER_SHAPE.get(Direction.SOUTH, true));
+    }
+
+    @Override
+    public VoxelShape getSubLevelCollisionShape(BlockGetter level, BlockState state) {
+        var orientation = MountedLauncherOrientation.of(state);
+        if (orientation.up() == Direction.UP) {
+            return super.getSubLevelCollisionShape(level, state);
+        }
+        var upright = withOrientation(state, Direction.SOUTH, Direction.UP);
+        return orientation.rotateShape(state.getValue(HALF) == DoubleBlockHalf.UPPER
+                ? UPPER_SHAPE : super.getSubLevelCollisionShape(level, upright));
     }
 
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean moving) {
-        if (!state.is(newState.getBlock())) {
-            BlockPos otherPos = state.getValue(HALF) == DoubleBlockHalf.UPPER ? pos.below() : pos.above();
-            MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, this.getBasePos(state, pos));
-            if (blockEntity != null) {
-                blockEntity.onBroken();
+        if (!moving && !state.is(newState.getBlock())) {
+            BlockPos otherPos = counterpartPos(state, pos);
+            BlockPos basePos = getBasePos(state, pos);
+            if (this.hasBase(level, state, basePos)) {
+                MountedRopeLauncherBlockEntity blockEntity = this.getMountedBlockEntity(level, basePos);
+                if (blockEntity != null) {
+                    blockEntity.onBroken();
+                }
             }
             BlockState otherState = level.getBlockState(otherPos);
-            if (otherState.is(this) && otherState.getValue(HALF) != state.getValue(HALF)) {
+            if (this.isCounterpart(state, otherState)) {
                 level.removeBlock(otherPos, false);
             }
         }

@@ -1,5 +1,10 @@
 package net.sprocketgames.create_aeronautics_throwable_rope_connector;
 
+import com.simibubi.create.content.contraptions.StructureTransform;
+import com.simibubi.create.content.contraptions.ControlledContraptionEntity;
+import com.simibubi.create.content.contraptions.bearing.BearingBlock;
+import com.simibubi.create.content.contraptions.bearing.MechanicalBearingBlockEntity;
+import com.mojang.authlib.GameProfile;
 import dev.simulated_team.simulated.content.items.rope.RopeItem.RopeItem;
 import dev.simulated_team.simulated.content.blocks.rope.rope_connector.RopeConnectorBlock;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
@@ -10,6 +15,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ClientInformation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -20,6 +27,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
@@ -29,12 +37,14 @@ import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlock;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.block.MountedRopeLauncherBlockEntity;
+import net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.MountedRopeLauncherSeatEntity;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.integration.CreateSimulatedIds;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.item.ThrowableRopeConnectorPlacement;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModBlocks;
 import net.sprocketgames.create_aeronautics_throwable_rope_connector.registry.ModItems;
 
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -45,6 +55,178 @@ public final class DockingGameTests {
     private static final BlockPos LAUNCHER = new BlockPos(2, 1, 5);
     static final BlockPos ANCHOR = new BlockPos(7, 2, 5);
 
+    @GameTest(template = "docking_test")
+    public static void verticallyRotatedLaunchersSurviveNeighborUpdates(GameTestHelper test) {
+        var launcher = ModBlocks.MOUNTED_ROPE_LAUNCHER.get();
+        var horizontal = launcher.defaultBlockState().setValue(MountedRopeLauncherBlock.FACING, Direction.EAST);
+        for (int rotation : new int[]{90, -90}) {
+            var transform = new StructureTransform(BlockPos.ZERO, 0, 0, rotation);
+            var vertical = transform.apply(horizontal);
+            test.assertValueEqual(vertical.getValue(MountedRopeLauncherBlock.FACING).getAxis(), Direction.Axis.Y,
+                    "Create's transform must rotate the launcher onto a vertical axis");
+            var base = rotation > 0 ? LAUNCHER : LAUNCHER.east(4);
+            test.setBlock(base, vertical);
+            test.setBlock(base.north(), Blocks.REDSTONE_BLOCK);
+            test.setBlock(base.south(), Blocks.REDSTONE_BLOCK);
+            test.assertBlockPresent(launcher, base);
+        }
+        test.succeed();
+    }
+
+    @GameTest(template = "docking_test")
+    public static void everyLauncherOrientationKeepsItsHeadAndShaftWhenRotated(GameTestHelper test) {
+        var launcher = (MountedRopeLauncherBlock) ModBlocks.MOUNTED_ROPE_LAUNCHER.get();
+        for (Direction head : Direction.values()) {
+            for (Direction forward : Direction.values()) {
+                if (head.getAxis() == forward.getAxis()) {
+                    continue;
+                }
+                var state = launcher.defaultBlockState().setValue(MountedRopeLauncherBlock.FACING, forward)
+                        .setValue(MountedRopeLauncherBlock.HEAD_DIRECTION, head);
+                for (Direction.Axis axis : Direction.Axis.values()) {
+                    var transform = new StructureTransform(BlockPos.ZERO, axis,
+                            net.minecraft.world.level.block.Rotation.CLOCKWISE_90, null);
+                    var rotated = transform.apply(state);
+                    var transformedHead = transform.apply(BlockPos.ZERO.relative(head));
+                    test.assertValueEqual(MountedRopeLauncherBlock.getHeadPos(rotated, BlockPos.ZERO), transformedHead,
+                            "The head position must follow Create's block coordinates");
+                    var transformedForward = transform.apply(BlockPos.ZERO.relative(forward));
+                    test.assertValueEqual(BlockPos.ZERO.relative(rotated.getValue(MountedRopeLauncherBlock.FACING)), transformedForward,
+                            "The launcher must point in the transformed firing direction");
+                    Direction.Axis shaft = launcher.getRotationAxis(rotated);
+                    test.assertTrue(shaft != rotated.getValue(MountedRopeLauncherBlock.FACING).getAxis()
+                                    && shaft != rotated.getValue(MountedRopeLauncherBlock.HEAD_DIRECTION).getAxis(),
+                            "The shaft stays perpendicular to the head and forward directions");
+                }
+            }
+        }
+        test.succeed();
+    }
+
+    @GameTest(template = "docking_test")
+    public static void launcherPlacesOnEveryFace(GameTestHelper test) {
+        var launcher = ModBlocks.MOUNTED_ROPE_LAUNCHER.get();
+        var player = testPlayer(test);
+        int index = 0;
+        for (Direction face : Direction.values()) {
+            BlockPos support = new BlockPos(2 + (index % 3) * 3, 3, 3 + (index / 3) * 5);
+            index++;
+            test.setBlock(support, Blocks.STONE);
+            BlockPos absoluteSupport = test.absolutePos(support);
+            player.moveTo(absoluteSupport.getX() + 0.5, absoluteSupport.getY() + 4, absoluteSupport.getZ() + 0.5, -90, 0);
+            player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(launcher));
+            var hit = new BlockHitResult(absoluteSupport.getCenter().relative(face, 0.5), face, absoluteSupport, false);
+            test.assertTrue(player.gameMode.useItemOn(player, test.getLevel(), player.getMainHandItem(), InteractionHand.MAIN_HAND, hit)
+                    .consumesAction(), "Launcher could not be placed on the " + face + " face");
+            BlockPos base = support.relative(face);
+            BlockPos head = base.relative(face);
+            test.assertBlockPresent(launcher, base);
+            test.assertBlockPresent(launcher, head);
+            test.assertBlockProperty(base, MountedRopeLauncherBlock.HEAD_DIRECTION, face);
+            test.assertBlockProperty(head, MountedRopeLauncherBlock.HALF, DoubleBlockHalf.UPPER);
+            test.getLevel().destroyBlock(test.absolutePos(head), false);
+            test.assertBlockNotPresent(launcher, base);
+        }
+        test.succeed();
+    }
+
+    @GameTest(template = "docking_test", timeoutTicks = 80)
+    public static void bearingDisassemblyPreservesLauncherAndRedstone(GameTestHelper test) {
+        var original = placeLauncher(test);
+        original.getAutomationInventory().insertItem(0, new ItemStack(coupling(), 2), false);
+        original.setAim(0, -4);
+        var level = test.getLevel();
+        var base = test.absolutePos(LAUNCHER);
+        var bearingBlock = BuiltInRegistries.BLOCK.get(ResourceLocation.fromNamespaceAndPath("create", "mechanical_bearing"));
+        test.setBlock(LAUNCHER.north(), bearingBlock.defaultBlockState().setValue(BearingBlock.FACING, Direction.SOUTH));
+        MechanicalBearingBlockEntity bearing = test.getBlockEntity(LAUNCHER.north());
+        bearing.assemble();
+        var moved = level.getEntitiesOfClass(ControlledContraptionEntity.class, new AABB(base).inflate(2));
+        test.assertValueEqual(moved.size(), 1, "Mechanical bearing assembles the launcher");
+        var contraption = moved.getFirst();
+        test.assertTrue(contraption.getContraption().getBlocks().containsKey(BlockPos.ZERO.above()), "Bearing also captures the launcher head");
+        test.assertBlockNotPresent(ModBlocks.MOUNTED_ROPE_LAUNCHER.get(), LAUNCHER);
+        test.assertBlockNotPresent(ModBlocks.MOUNTED_ROPE_LAUNCHER.get(), LAUNCHER.above());
+
+        var rotation = new StructureTransform(base, 0, 0, 90);
+        contraption.setAngle(90);
+        bearing.disassemble();
+        var forward = rotation.rotateFacing(Direction.EAST);
+        var headDirection = rotation.rotateFacing(Direction.UP);
+        var head = LAUNCHER.relative(headDirection);
+        test.assertBlockProperty(LAUNCHER, MountedRopeLauncherBlock.FACING, forward);
+        test.assertBlockProperty(head, MountedRopeLauncherBlock.HALF, DoubleBlockHalf.UPPER);
+        test.assertBlockProperty(head, MountedRopeLauncherBlock.HEAD_DIRECTION, headDirection);
+        MountedRopeLauncherBlockEntity restored = test.getBlockEntity(LAUNCHER);
+        test.assertValueEqual(restored.getAmmoCount(), 2, "Bearing preserves launcher ammo");
+        test.assertValueEqual(restored.getAimPitch(), -4.0F, "Bearing preserves the saved aim relative to the launcher");
+
+        BlockPos dock = head.relative(forward, 4);
+        test.setBlock(dock.relative(forward), Blocks.STONE);
+        test.setBlock(dock, connector().defaultBlockState().setValue(RopeConnectorBlock.FACING, forward.getOpposite()));
+        var fireSide = rotation.rotateFacing(Direction.SOUTH);
+        test.setBlock(head.relative(fireSide), Blocks.REDSTONE_BLOCK);
+        test.runAfterDelay(10, () -> {
+            test.assertTrue(restored.isConnected(), "The rotated redstone fire input docks on the vertical shot");
+            test.assertValueEqual(restored.getAmmoCount(), 1, "The shot consumes one coupling");
+            test.setBlock(head.relative(fireSide), Blocks.AIR);
+            test.setBlock(LAUNCHER.relative(fireSide.getOpposite()), Blocks.REDSTONE_BLOCK);
+            test.assertFalse(restored.isConnected(), "The rotated redstone release input disconnects");
+            test.assertBlockPresent(connector(), dock);
+            test.succeed();
+        });
+    }
+
+    @GameTest(template = "docking_test", timeoutTicks = 80)
+    public static void riderCanDockWithDownwardLauncher(GameTestHelper test) {
+        var base = LAUNCHER.above(2);
+        var head = base.east();
+        var dock = head.below(2);
+        var state = ModBlocks.MOUNTED_ROPE_LAUNCHER.get().defaultBlockState()
+                .setValue(MountedRopeLauncherBlock.FACING, Direction.DOWN)
+                .setValue(MountedRopeLauncherBlock.HEAD_DIRECTION, Direction.EAST);
+        test.setBlock(base, state);
+        test.setBlock(head, state.setValue(MountedRopeLauncherBlock.HALF, DoubleBlockHalf.UPPER));
+        test.setBlock(dock.below(), Blocks.STONE);
+        test.setBlock(dock, connector().defaultBlockState().setValue(RopeConnectorBlock.FACING, Direction.UP));
+        MountedRopeLauncherBlockEntity launcher = test.getBlockEntity(base);
+        launcher.getAutomationInventory().insertItem(0, new ItemStack(coupling()), false);
+
+        var headPos = test.absolutePos(head);
+        var level = test.getLevel();
+        var player = new ServerPlayer(level.getServer(), level, new GameProfile(UUID.randomUUID(), "launcher-rider"),
+                ClientInformation.createDefault());
+        // Exercise real mounting without loading a modded client through the GameTest connection.
+        player.connection = testPlayer(test).connection;
+        player.moveTo(headPos.getX() + 1.25, headPos.getY(), headPos.getZ() + 0.5, 0, 0);
+        var hit = new BlockHitResult(headPos.getCenter(), Direction.EAST, headPos, false);
+        player.gameMode.useItemOn(player, test.getLevel(), ItemStack.EMPTY, InteractionHand.MAIN_HAND, hit);
+        test.assertTrue(player.getVehicle() instanceof MountedRopeLauncherSeatEntity, "The rotated head mounts the rider");
+        var seat = (MountedRopeLauncherSeatEntity) player.getVehicle();
+        seat.positionRider(player);
+        var dockPos = test.absolutePos(dock);
+        var dockShape = test.getLevel().getBlockState(dockPos).getCollisionShape(test.getLevel(), dockPos);
+        player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES,
+                Vec3.atLowerCornerOf(dockPos).add(dockShape.bounds().getCenter()));
+        Vec3 eye = player.getEyePosition();
+        Vec3 look = player.getLookAngle();
+        var ray = level.clip(new net.minecraft.world.level.ClipContext(eye, eye.add(look.scale(12)),
+                net.minecraft.world.level.ClipContext.Block.COLLIDER, net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+        test.assertTrue(ray.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK && ray.getBlockPos().equals(dockPos),
+                "The rider's sightline reaches the connector (eye " + test.relativeVec(eye) + ", look " + look
+                        + ", hit " + level.getBlockState(ray.getBlockPos()) + " at " + test.relativeVec(ray.getLocation()) + ")");
+        seat.fire(player);
+        var projectiles = level.getEntitiesOfClass(net.sprocketgames.create_aeronautics_throwable_rope_connector.entity.ThrowableRopeConnectorProjectile.class,
+                new AABB(headPos).inflate(10), projectile -> test.absolutePos(base).equals(projectile.getMountedSourcePos()));
+        test.assertValueEqual(projectiles.size(), 1, "The rider launches a projectile");
+        test.runAfterDelay(10, () -> {
+            player.stopRiding();
+            test.assertTrue(launcher.isConnected(), "An aimed rider shot from a downward launcher reaches the dock");
+            test.assertValueEqual(launcher.getAmmoCount(), 0, "The rider shot consumes one coupling");
+            test.succeed();
+        });
+    }
+
     @GameTest(template = "docking_test", timeoutTicks = 100)
     public static void mountedRedocking(GameTestHelper test) {
         var mounted = placeLauncher(test);
@@ -53,13 +235,15 @@ public final class DockingGameTests {
             test.setBlock(8, y, 5, Blocks.STONE);
         }
         mounted.getAutomationInventory().insertItem(0, new ItemStack(ModItems.THROWABLE_ROPE_CONNECTOR.get()), false);
-        mounted.fire(null);
+        test.setBlock(LAUNCHER.south(), Blocks.REDSTONE_BLOCK);
         test.runAfterDelay(8, () -> {
             test.assertBlockPresent(anchor, ANCHOR);
             test.assertTrue(mounted.isConnected(), "Connector shot must attach to the new anchor");
             test.assertValueEqual(mounted.getAmmoCount(), 0, "Connector ammo consumed");
             assertSavedState(test, mounted, true, 0);
-            mounted.handleRedstoneSignal(false, true);
+            test.setBlock(LAUNCHER.south(), Blocks.AIR);
+            test.setBlock(LAUNCHER.north(), Blocks.REDSTONE_BLOCK);
+            test.setBlock(LAUNCHER.north(), Blocks.AIR);
             test.assertFalse(mounted.isConnected(), "Redstone release disconnects");
             assertSavedState(test, mounted, false, 0);
             test.assertBlockPresent(anchor, ANCHOR);

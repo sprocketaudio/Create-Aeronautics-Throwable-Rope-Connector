@@ -47,6 +47,7 @@ public final class CreateAeronauticsThrowableRopeConnectorClient {
 
     private void registerAdditionalModels(ModelEvent.RegisterAdditional event) {
         event.register(ModelResourceLocation.standalone(MOUNTED_LAUNCHER_HEAD));
+        event.register(ModelResourceLocation.standalone(MountedRopeLauncherRenderer.BASE_MODEL));
         event.register(ModelResourceLocation.standalone(MOUNTED_LAUNCHER_COG));
     }
 
